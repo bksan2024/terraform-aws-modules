@@ -31,7 +31,7 @@ resource "aws_instance" "this" {
   user_data_replace_on_change = var.user_data_replace_on_change
 
   availability_zone      = var.availability_zone
-  subnet_id              = var.subnet_id
+  subnet_id            = element(var.subnet_id, 0)
   vpc_security_group_ids = var.vpc_security_group_ids
 
   key_name             = var.key_name
@@ -42,8 +42,10 @@ resource "aws_instance" "this" {
   associate_public_ip_address = var.associate_public_ip_address
   private_ip                  = var.private_ip
   secondary_private_ips       = var.secondary_private_ips
-  ipv6_address_count          = var.ipv6_address_count
-  ipv6_addresses              = var.ipv6_addresses
+# Choose between ipv6_address_count or ipv6_addresses
+  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null
+  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null
+
 
   ebs_optimized = var.ebs_optimized
 
@@ -173,7 +175,7 @@ resource "aws_instance" "this" {
   disable_api_termination              = var.disable_api_termination
   #disable_api_stop                     = var.disable_api_stop
   instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior
-  placement_group                      = var.placement_group
+  #placement_group                      = var.placement_group
   tenancy                              = var.tenancy
   host_id                              = var.host_id
 
@@ -209,7 +211,7 @@ resource "aws_instance" "ignore_ami" {
   user_data_replace_on_change = var.user_data_replace_on_change
 
   availability_zone      = var.availability_zone
-  subnet_id              = var.subnet_id
+  subnet_id            = element(var.subnet_id, 0)
   vpc_security_group_ids = var.vpc_security_group_ids
 
   key_name             = var.key_name
@@ -220,8 +222,10 @@ resource "aws_instance" "ignore_ami" {
   associate_public_ip_address = var.associate_public_ip_address
   private_ip                  = var.private_ip
   secondary_private_ips       = var.secondary_private_ips
-  ipv6_address_count          = var.ipv6_address_count
-  ipv6_addresses              = var.ipv6_addresses
+# Choose between ipv6_address_count or ipv6_addresses
+  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null
+  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null
+
 
   ebs_optimized = var.ebs_optimized
 
@@ -350,7 +354,7 @@ resource "aws_instance" "ignore_ami" {
   source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check
   disable_api_termination              = var.disable_api_termination
   instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior
-  placement_group                      = var.placement_group
+  #placement_group                      = var.placement_group
   tenancy                              = var.tenancy
   host_id                              = var.host_id
 

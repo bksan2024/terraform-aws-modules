@@ -3,7 +3,6 @@ output "id" {
   value = try(
     aws_instance.this[0].id,
     aws_instance.ignore_ami[0].id,
-    aws_spot_instance_request.this[0].id,
     null,
   )
 }
@@ -13,7 +12,6 @@ output "arn" {
   value = try(
     aws_instance.this[0].arn,
     aws_instance.ignore_ami[0].arn,
-    aws_spot_instance_request.this[0].arn,
     null,
   )
 }
@@ -23,7 +21,6 @@ output "capacity_reservation_specification" {
   value = try(
     aws_instance.this[0].capacity_reservation_specification,
     aws_instance.ignore_ami[0].capacity_reservation_specification,
-    aws_spot_instance_request.this[0].capacity_reservation_specification,
     null,
   )
 }
@@ -33,7 +30,6 @@ output "instance_state" {
   value = try(
     aws_instance.this[0].instance_state,
     aws_instance.ignore_ami[0].instance_state,
-    aws_spot_instance_request.this[0].instance_state,
     null,
   )
 }
@@ -43,7 +39,6 @@ output "outpost_arn" {
   value = try(
     aws_instance.this[0].outpost_arn,
     aws_instance.ignore_ami[0].outpost_arn,
-    aws_spot_instance_request.this[0].outpost_arn,
     null,
   )
 }
@@ -53,7 +48,6 @@ output "password_data" {
   value = try(
     aws_instance.this[0].password_data,
     aws_instance.ignore_ami[0].password_data,
-    aws_spot_instance_request.this[0].password_data,
     null,
   )
 }
@@ -63,7 +57,6 @@ output "primary_network_interface_id" {
   value = try(
     aws_instance.this[0].primary_network_interface_id,
     aws_instance.ignore_ami[0].primary_network_interface_id,
-    aws_spot_instance_request.this[0].primary_network_interface_id,
     null,
   )
 }
@@ -73,7 +66,6 @@ output "private_dns" {
   value = try(
     aws_instance.this[0].private_dns,
     aws_instance.ignore_ami[0].private_dns,
-    aws_spot_instance_request.this[0].private_dns,
     null,
   )
 }
@@ -83,7 +75,6 @@ output "public_dns" {
   value = try(
     aws_instance.this[0].public_dns,
     aws_instance.ignore_ami[0].public_dns,
-    aws_spot_instance_request.this[0].public_dns,
     null,
   )
 }
@@ -94,7 +85,6 @@ output "public_ip" {
     aws_eip.this[0].public_ip,
     aws_instance.this[0].public_ip,
     aws_instance.ignore_ami[0].public_ip,
-    aws_spot_instance_request.this[0].public_ip,
     null,
   )
 }
@@ -104,7 +94,6 @@ output "private_ip" {
   value = try(
     aws_instance.this[0].private_ip,
     aws_instance.ignore_ami[0].private_ip,
-    aws_spot_instance_request.this[0].private_ip,
     null,
   )
 }
@@ -114,7 +103,6 @@ output "ipv6_addresses" {
   value = try(
     aws_instance.this[0].ipv6_addresses,
     aws_instance.ignore_ami[0].ipv6_addresses,
-    aws_spot_instance_request.this[0].ipv6_addresses,
     [],
   )
 }
@@ -124,7 +112,6 @@ output "tags_all" {
   value = try(
     aws_instance.this[0].tags_all,
     aws_instance.ignore_ami[0].tags_all,
-    aws_spot_instance_request.this[0].tags_all,
     {},
   )
 }
@@ -135,7 +122,6 @@ output "ami" {
   value = try(
     aws_instance.this[0].ami,
     aws_instance.ignore_ami[0].ami,
-    aws_spot_instance_request.this[0].ami,
     null,
   )
 }
@@ -145,7 +131,6 @@ output "availability_zone" {
   value = try(
     aws_instance.this[0].availability_zone,
     aws_instance.ignore_ami[0].availability_zone,
-    aws_spot_instance_request.this[0].availability_zone,
     null,
   )
 }
@@ -192,7 +177,6 @@ output "root_block_device" {
   value = try(
     aws_instance.this[0].root_block_device,
     aws_instance.ignore_ami[0].root_block_device,
-    aws_spot_instance_request.this[0].root_block_device,
     null
   )
 }
@@ -202,7 +186,6 @@ output "ebs_block_device" {
   value = try(
     aws_instance.this[0].ebs_block_device,
     aws_instance.ignore_ami[0].ebs_block_device,
-    aws_spot_instance_request.this[0].ebs_block_device,
     null
   )
 }
@@ -212,7 +195,6 @@ output "ephemeral_block_device" {
   value = try(
     aws_instance.this[0].ephemeral_block_device,
     aws_instance.ignore_ami[0].ephemeral_block_device,
-    aws_spot_instance_request.this[0].ephemeral_block_device,
     null
   )
 }

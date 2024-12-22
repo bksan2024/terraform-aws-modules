@@ -1,72 +1,52 @@
 ## Terraform AWS Provider Module variables############################################
 ######################################################################################
 
-# Variable: terraform_version
-# Specifies the Terraform version constraint.
-# Default: ">= 1.4.0"
-# Example: ">= 1.4.0"
-
-variable "terraform_version" {
-  description = "Terraform version constraint. Specifies the minimum required version of Terraform to use."
-  type        = string
-  default     = ">= 1.4.0"
-}
-
-# Variable: provider_version
-# Specifies the AWS provider version to use.
-# Default: "~> 5.0"
-# Example: "~> 5.0"
-
-variable "provider_version" {
-  description = "AWS provider version to use with Terraform. Ensure compatibility with your desired features and Terraform version."
-  type        = string
-  default     = "~> 5.0"
-}
-
-# Variable: region
-# Specifies the AWS region for deploying resources.
-# Default: "us-east-1"
-# Example: "us-west-2"
-
+##*************************************************************************##
+# Primary AWS region for the provider
 variable "region" {
-  description = "AWS region where resources will be deployed. Choose a region that meets latency, compliance, and availability requirements."
+  description = "The AWS region to be used by the primary provider. Example: us-east-1, us-west-2."
   type        = string
-  default     = "us-east-1"
+  default     = "ca-central-1"
 }
 
-# Variable: assume_role_arn
-# Specifies the ARN of the role to assume in AWS.
-# Default: null
-# Example: "arn:aws:iam::123456789012:role/example-role"
-
-variable "assume_role_arn" {
-  description = "ARN of the role to assume in AWS for cross-account access. Useful for managing resources in other AWS accounts."
-  type        = string
-  default     = null
-}
-
-# Variable: default_tags
-# Specifies default tags for AWS resources.
-# Default: {}
-# Example: { "Environment" = "Production", "Team" = "DevOps" }
-
-variable "default_tags" {
-  description = "A map of default tags to assign to all AWS resources created by Terraform. Helps in resource identification and organization."
-  type        = map(string)
-  default     = {}
-}
-
-# Variable: profile
-# Specifies the AWS CLI profile to use for credentials.
-# Default: "default"
-# Example: "production-profile"
-
+# AWS CLI profile for authentication with the primary provider
 variable "profile" {
-  description = "AWS CLI profile to use for authentication and credentials. Use profiles configured in your AWS credentials file."
+  description = "The AWS CLI profile to use for the primary provider. This profile must be configured in your AWS CLI credentials file."
   type        = string
   default     = "default"
 }
 
+# Secondary AWS region for the provider (optional)
+variable "secondary_region" {
+  description = "The secondary AWS region to be used by the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# AWS CLI profile for authentication with the secondary provider (optional)
+variable "secondary_profile" {
+  description = "The AWS CLI profile to use for the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# Default tags to apply to all resources managed by the providers
+variable "default_tags" {
+  description = <<EOT
+A map of default tags to be applied to all resources. 
+Tags are key-value pairs that help with resource identification, cost management, and access control.
+Examples:
+- Environment: dev, test, prod
+- Team: DevOps, Security
+- Project: your-project-name
+EOT
+  type = map(string)
+  default = {
+    Environment = "dev"
+    Team        = "DevOps"
+    Project     = "example-project"
+  }
+}
 
 
 
@@ -107,7 +87,7 @@ variable "availability_zone" {
 
 variable "subnet_id" {
   description = "The ID of the subnet where the instance will be deployed."
-  type        = string
+  type        = list(string) 
 }
 
 # Variable: vpc_security_group_ids
@@ -120,15 +100,7 @@ variable "vpc_security_group_ids" {
   type        = list(string)
 }
 
-# Variable: placement_group
-# Specifies the placement group name for the instance.
-# Default: null
-# Example: "placement-group-name"
 
-variable "placement_group" {
-  description = "The placement group name for the EC2 instance."
-  type        = string
-}
 
 # Variable: create_eip
 # Determines whether to create and associate an Elastic IP.

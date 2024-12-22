@@ -86,7 +86,7 @@ Defines the maintenance options for the instance.
 Specify settings such as auto-recovery or custom maintenance windows.
 EOT
   type    = map(any)
-  default = { "auto_recovery" = "enabled" }
+  default = { "auto_recovery" = "disabled" }
 }
 
 # Variable: availability_zone
@@ -357,7 +357,7 @@ variable "ipv6_addresses" {
   description = <<EOT
 Specify one or more IPv6 addresses from the range of the subnet to associate with the primary network interface.
 EOT
-  type    = list(string)
+  type    = list(any)
   default = []
 }
 
@@ -485,16 +485,7 @@ variable "private_dns_name_options" {
   default     = {}
 }
 
-# Variable: placement_group
-# Specifies the Placement Group for the instance.
-# Default: null
-# Example: "my-placement-group"
 
-variable "placement_group" {
-  description = "The Placement Group to start the instance in."
-  type        = string
-  default     = null
-}
 
 # Variable: private_ip
 # Configures the private IP address for the instance.
@@ -561,7 +552,7 @@ EOT
 
 variable "subnet_id" {
   description = "The VPC Subnet ID to launch the instance in."
-  type        = string
+  type        = list(string)
   default     = null
 }
 
@@ -922,4 +913,51 @@ EOT
   default = {}
 }
 
+
+##*************************************************************************##
+# Primary AWS region for the provider
+variable "region" {
+  description = "The AWS region to be used by the primary provider. Example: us-east-1, us-west-2."
+  type        = string
+  default     = "ca-central-1"
+}
+
+# AWS CLI profile for authentication with the primary provider
+variable "profile" {
+  description = "The AWS CLI profile to use for the primary provider. This profile must be configured in your AWS CLI credentials file."
+  type        = string
+  default     = "default"
+}
+
+# Secondary AWS region for the provider (optional)
+variable "secondary_region" {
+  description = "The secondary AWS region to be used by the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# AWS CLI profile for authentication with the secondary provider (optional)
+variable "secondary_profile" {
+  description = "The AWS CLI profile to use for the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# Default tags to apply to all resources managed by the providers
+variable "default_tags" {
+  description = <<EOT
+A map of default tags to be applied to all resources. 
+Tags are key-value pairs that help with resource identification, cost management, and access control.
+Examples:
+- Environment: dev, test, prod
+- Team: DevOps, Security
+- Project: your-project-name
+EOT
+  type = map(string)
+  default = {
+    Environment = "dev"
+    Team        = "DevOps"
+    Project     = "example-project"
+  }
+}
 

@@ -1,5 +1,13 @@
+################################################################################
+# Data Source: AWS Partition
+################################################################################
+# Retrieves information about the current AWS partition (e.g., aws, aws-cn).
 data "aws_partition" "current" {}
 
+################################################################################
+# Local Variables
+################################################################################
+# These locals define reusable variables to simplify resource configurations.
 locals {
 
 

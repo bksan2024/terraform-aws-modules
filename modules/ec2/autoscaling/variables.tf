@@ -1350,3 +1350,50 @@ variable "iam_role_tags" {
 }
 
 
+
+##*************************************************************************##
+# Primary AWS region for the provider
+variable "region" {
+  description = "The AWS region to be used by the primary provider. Example: us-east-1, us-west-2."
+  type        = string
+  default     = "ca-central-1"
+}
+
+# AWS CLI profile for authentication with the primary provider
+variable "profile" {
+  description = "The AWS CLI profile to use for the primary provider. This profile must be configured in your AWS CLI credentials file."
+  type        = string
+  default     = "default"
+}
+
+# Secondary AWS region for the provider (optional)
+variable "secondary_region" {
+  description = "The secondary AWS region to be used by the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# AWS CLI profile for authentication with the secondary provider (optional)
+variable "secondary_profile" {
+  description = "The AWS CLI profile to use for the secondary provider. Leave null if not using a secondary provider."
+  type        = string
+  default     = null
+}
+
+# Default tags to apply to all resources managed by the providers
+variable "default_tags" {
+  description = <<EOT
+A map of default tags to be applied to all resources. 
+Tags are key-value pairs that help with resource identification, cost management, and access control.
+Examples:
+- Environment: dev, test, prod
+- Team: DevOps, Security
+- Project: your-project-name
+EOT
+  type = map(string)
+  default = {
+    Environment = "dev"
+    Team        = "DevOps"
+    Project     = "example-project"
+  }
+}

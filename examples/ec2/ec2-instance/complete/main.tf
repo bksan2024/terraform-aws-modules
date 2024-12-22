@@ -32,7 +32,7 @@ module "ec2_complete" {
   availability_zone        = var.availability_zone
   subnet_id                = var.subnet_id
   vpc_security_group_ids   = var.vpc_security_group_ids
-  placement_group          = var.placement_group
+  #placement_group          = var.placement_group
   create_eip               = var.create_eip
   #disable_api_stop         = var.disable_api_stop
   create_iam_instance_profile = var.create_iam_instance_profile
