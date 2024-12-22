@@ -1,0 +1,14 @@
+# Local .terraform directories
+.terraform/
+
+# Terraform variable files
+terraform.tfvars
+*.tfvars
+
+# Ignore state files
+*.tfstate
+*.tfstate.*
+
+# Ignore backup files created by Terraform
+*.tfstate.backup
+*.tfstate.backup.*
