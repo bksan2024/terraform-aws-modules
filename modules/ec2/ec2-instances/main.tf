@@ -1,15 +1,14 @@
 data "aws_partition" "current" {}
 
 locals {
-  create = var.create
-
+ 
   is_t_instance_type = replace(var.instance_type, "/^t(2|3|3a|4g){1}\\..*$/", "1") == "1" ? true : false
 
   ami = try(coalesce(var.ami, try(nonsensitive(data.aws_ssm_parameter.this[0].value), null)), null)
 }
 
 data "aws_ssm_parameter" "this" {
-  count = local.create && var.ami == null ? 1 : 0
+  count = var.ami == null ? 1 : 0
 
   name = var.ami_ssm_parameter
 }
@@ -19,12 +18,12 @@ data "aws_ssm_parameter" "this" {
 ################################################################################
 
 resource "aws_instance" "this" {
-  count = local.create && !var.ignore_ami_changes ? 1 : 0
+  count = !var.ignore_ami_changes ? 1 : 0
 
   ami                  = local.ami
   instance_type        = var.instance_type
-  cpu_core_count       = var.cpu_core_count
-  cpu_threads_per_core = var.cpu_threads_per_core
+  #cpu_core_count       = var.cpu_core_count
+  #cpu_threads_per_core = var.cpu_threads_per_core
   hibernation          = var.hibernation
 
   user_data                   = var.user_data
@@ -172,7 +171,7 @@ resource "aws_instance" "this" {
 
   source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check
   disable_api_termination              = var.disable_api_termination
-  d#isable_api_stop                     = var.disable_api_stop
+  #disable_api_stop                     = var.disable_api_stop
   instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior
   placement_group                      = var.placement_group
   tenancy                              = var.tenancy
@@ -197,12 +196,12 @@ resource "aws_instance" "this" {
 ################################################################################
 
 resource "aws_instance" "ignore_ami" {
-  count = local.create && var.ignore_ami_changes? 1 : 0
+  count = var.ignore_ami_changes? 1 : 0
 
   ami                  = local.ami
   instance_type        = var.instance_type
-  cpu_core_count       = var.cpu_core_count
-  cpu_threads_per_core = var.cpu_threads_per_core
+ # cpu_core_count       = var.cpu_core_count
+ # cpu_threads_per_core = var.cpu_threads_per_core
   hibernation          = var.hibernation
 
   user_data                   = var.user_data
@@ -384,7 +383,7 @@ locals {
 }
 
 data "aws_iam_policy_document" "assume_role_policy" {
-  count = var.create && var.create_iam_instance_profile ? 1 : 0
+  count = var.create_iam_instance_profile ? 1 : 0
 
   statement {
     sid     = "EC2AssumeRole"
@@ -398,7 +397,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 }
 
 resource "aws_iam_role" "this" {
-  count = var.create && var.create_iam_instance_profile ? 1 : 0
+  count = var.create_iam_instance_profile ? 1 : 0
 
   name        = var.iam_role_use_name_prefix ? null : local.iam_role_name
   name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null
@@ -413,14 +412,14 @@ resource "aws_iam_role" "this" {
 }
 
 resource "aws_iam_role_policy_attachment" "this" {
-  for_each = { for k, v in var.iam_role_policies : k => v if var.create && var.create_iam_instance_profile }
+  for_each = { for k, v in var.iam_role_policies : k => v if var.create_iam_instance_profile }
 
   policy_arn = each.value
   role       = aws_iam_role.this[0].name
 }
 
 resource "aws_iam_instance_profile" "this" {
-  count = var.create && var.create_iam_instance_profile ? 1 : 0
+  count = var.create_iam_instance_profile ? 1 : 0
 
   role = aws_iam_role.this[0].name
 
@@ -440,7 +439,7 @@ resource "aws_iam_instance_profile" "this" {
 ################################################################################
 
 resource "aws_eip" "this" {
-  count = local.create && var.create_eip ? 1 : 0
+  count = var.create_eip ? 1 : 0
 
   instance = try(
     aws_instance.this[0].id,
