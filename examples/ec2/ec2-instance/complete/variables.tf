@@ -44,40 +44,98 @@ EOT
   default = {
     Environment = "dev"
     Team        = "DevOps"
-    Project     = "example-project"
+    Project     = "GB-GPM"
   }
 }
 
 
 
 # Variable: name
-# Specifies the name of the EC2 instance.
-# Default: null
-# Example: "example-instance"
+# Specifies the name to be used for the EC2 instance.
+# Default: "default-ec2-instance"
+# Example: "my-ec2-instance"
+# Constraints:
+# - Must not exceed 256 characters.
 
 variable "name" {
-  description = "The name of the EC2 instance."
+  description = "Name to be used for the EC2 instance. This will be added as a 'Name' tag for identification."
   type        = string
+  default     = "awlapturbonapp01"
+  validation {
+    condition     = length(var.name) <= 256
+    error_message = "The 'name' must not exceed 256 characters."
+  }
 }
+
+
+# Variable: ami
+# Specifies the AMI ID to use for the instance.
+# Default: null
+# Example: "ami-0c55b159cbfafe1f0"
+# Constraints:
+# - Must either be null or a valid AMI ID starting with "ami-".
+
+variable "ami" {
+  description = "AMI ID to use for the instance. If not provided, it defaults to null and uses the SSM parameter defined in 'ami_ssm_parameter'."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.ami == null || can(regex("^ami-[a-z0-9]+$", var.ami))
+    error_message = "The 'ami' must either be null or a valid AMI ID starting with 'ami-'."
+  }
+}
+
+# Define the variable for the number of instances to create
+variable "instance_count" {
+  description = "Number of instances to create"  # Description of the variable
+  type        = number  # The type of the variable is a number
+  default     = 1  # Default value is set to 1
+
+  # Validation block to ensure the instance count is within a specified range
+  validation {
+    # Condition to check if the instance count is between 1 and 10 (inclusive)
+    condition     = var.instance_count >= 1 && var.instance_count <= 10
+    # Error message to display if the condition is not met
+    error_message = "The instance count must be between 1 and 10."
+  }
+}
+
+
 
 # Variable: instance_type
-# Specifies the type of EC2 instance to deploy.
-# Default: null
-# Example: "t2.micro"
+# Specifies the type of instance to start.
+# Default: "t3.micro"
+# Example: "m5.large"
+# Constraints:
+# - Must be a valid EC2 instance type.
 
 variable "instance_type" {
-  description = "The type of instance to deploy."
+  description = "The type of the EC2 instance to launch in the Auto Scaling Group. Cannot be used with `instance_requirements`."
   type        = string
+  default     = "t2.micro"
+
+  validation {
+    condition     = contains(["t2.micro", "t2.small", "t2.medium", "m5.large", "m5.xlarge", "c5.2xlarge"], var.instance_type)
+    error_message = "The instance type must be one of the following: t2.micro, t2.small, t2.medium, m5.large, m5.xlarge."
+  }
 }
 
+
 # Variable: availability_zone
-# Specifies the availability zone for the EC2 instance.
-# Default: null
-# Example: "eu-west-1a"
+# Specifies the Availability Zone (AZ) to start the instance in.
+# Default: "ca-central-1"
+# Example: "ca-central-1a"
+# Constraints:
+# - Must be a valid AWS Availability Zone string.
 
 variable "availability_zone" {
-  description = "The availability zone to deploy the instance in."
+  description = "Specifies the Availability Zone (AZ) to start the instance in. Defaults to 'ca-central-1a' for instances in Canada Central."
   type        = string
+  default     = "ca-central-1a"
+  validation {
+    condition     = can(regex("^[a-z]{2}-[a-z]+-[0-9][a-z]$", var.availability_zone))
+    error_message = "The 'availability_zone' must be a valid AWS Availability Zone string, such as 'us-east-1a' or 'ca-central-1a'."
+  }
 }
 
 # Variable: subnet_id
@@ -201,45 +259,7 @@ variable "user_data_replace_on_change" {
   default     = false
 }
 
-# Variable: cpu_core_count
-# Sets the number of CPU cores for the instance.
-# Default: null
-# Example: 4
-# Constraints:
-# - Must be a positive integer.
 
-variable "cpu_core_count" {
-  description = <<EOT
-Sets the number of CPU cores for the instance. 
-This is only supported on instance types that support CPU options.
-EOT
-  type    = number
-  default = null
-  validation {
-    condition     = var.cpu_core_count == null || var.cpu_core_count > 0
-    error_message = "The 'cpu_core_count' must be null or a positive integer."
-  }
-}
-
-# Variable: cpu_threads_per_core
-# Sets the number of CPU threads per core for the instance.
-# Default: null
-# Example: 2
-# Constraints:
-# - Must be a positive integer.
-
-variable "cpu_threads_per_core" {
-  description = <<EOT
-Sets the number of CPU threads per core for the instance. 
-This has no effect unless `cpu_core_count` is also set.
-EOT
-  type    = number
-  default = null
-  validation {
-    condition     = var.cpu_threads_per_core == null || var.cpu_threads_per_core > 0
-    error_message = "The 'cpu_threads_per_core' must be null or a positive integer."
-  }
-}
 
 # Variable: enable_volume_tags
 # Determines whether to enable tags for EBS volumes attached to the instance.
@@ -384,6 +404,34 @@ variable "ebs_block_device_tags" {
   default     = {}
 }
 
+variable "ebs_block_device" {
+  description = "List of EBS block devices to attach to the instance."
+  type = list(object({
+    delete_on_termination = optional(bool, true)
+    device_name           = string
+    encrypted             = optional(bool, false)
+    iops                  = optional(number)
+    kms_key_id            = optional(string)
+    snapshot_id           = optional(string)
+    volume_size           = number
+    volume_type           = string
+    throughput            = optional(number)
+    tags                  = optional(map(string), {})
+  }))
+  
+  validation {
+    condition = alltrue([
+      for device in var.ebs_block_device : 
+      device.volume_size > 0 &&
+      contains(["gp2", "gp3", "io1", "io2", "sc1", "st1", "standard"], device.volume_type) &&
+      (device.throughput == null || device.throughput > 0) &&
+      (device.encrypted == null || device.encrypted == true || device.encrypted == false)
+    ])
+    error_message = "Each EBS block device must have a positive volume size, a valid volume type (e.g., gp2, gp3), optional positive IOPS and throughput, and optional boolean encryption."
+  }
+}
+
+
 # Variable: tags
 # Specifies tags to apply to the EC2 instance and related resources.
 # Default: {}
@@ -393,4 +441,201 @@ variable "tags" {
   description = "Tags to apply to the EC2 instance."
   type        = map(string)
   default     = {}
+}
+
+
+
+
+
+
+
+
+# Variable: ephemeral_block_device
+# Specifies ephemeral block devices for the instance.
+# Default: []
+# Example: [
+#   {
+#     device_name  = "/dev/xvdc"
+#     virtual_name = "ephemeral0"
+#   }
+# ]
+
+variable "ephemeral_block_device" {
+  description = <<EOT
+Customize ephemeral (also known as instance store) volumes on the instance.
+These are temporary storage devices available for certain instance types.
+EOT
+  type    = list(object({
+    device_name  = string
+    virtual_name = string
+  }))
+  default = [
+    {
+      device_name  = "/dev/xvdc"
+      virtual_name = "ephemeral0"
+    }
+  ]
+
+  validation {
+    condition = alltrue([
+      for device in var.ephemeral_block_device : 
+      can(regex("^/dev/xvd[b-z]$", device.device_name)) &&
+      can(regex("^ephemeral[0-9]+$", device.virtual_name))
+    ])
+    error_message = "Each block device must have a valid device name (e.g., /dev/xvdc) and a valid virtual name (e.g., ephemeral0)."
+  }
+}
+
+
+# Variable: network_interface
+# Specifies custom network interfaces to attach to the instance.
+# Default: []
+# Example: [
+#   {
+#     device_index         = 0
+#     network_interface_id = "eni-12345678"
+#   }
+# ]
+
+variable "network_interface" {
+  description = <<EOT
+Customize network interfaces to be attached at instance boot time.
+This includes attributes such as device index, subnet ID, and security groups.
+EOT
+  type    = list(map(string))
+  default = []
+}
+
+
+#################################Security Group#######################################################
+
+
+variable "vpc_id" {
+  description = "The VPC ID where the security group will be created"
+  type        = string
+}
+
+variable "security_group_name" {
+  description = "The name of the security group"
+  type        = string
+}
+
+variable "security_group_description" {
+  description = "The description of the security group"
+  type        = string
+}
+
+variable "ingress_rules" {
+  description = "List of ingress rules"
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = string
+  }))
+}
+
+variable "egress_rules" {
+  description = "List of egress rules"
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = string
+  }))
+}
+
+
+variable "provider_name" {
+  description = "Name of the provider"
+  type        = string
+}
+
+variable "os_name" {
+  description = "Name of the operating system"
+  type        = string
+}
+
+variable "environment_name" {
+  description = "Name of the environment"
+  type        = string
+}
+
+variable "purpose" {
+  description = "Name of the application"
+  type        = string
+}
+
+variable "additional_tags" {
+  description = "Additional tags to apply"
+  type        = map(string)
+  default     = {}
+}
+
+variable "instances" {
+  description = "Map of instances to create"
+  type = map(object({
+    ami              = string
+    instance_type    = string
+    key_name         = string
+    additional_tags  = optional(map(string))
+  }))
+}
+
+variable "server_type" {
+  description = "Type of server to create"
+  type        = string
+  default     = "ap"
+}
+
+# Variable: iam_instance_profile
+# Specifies the IAM Instance Profile to use.
+# Default: null
+# Example: "my-instance-profile"
+
+variable "iam_instance_profile" {
+  description = <<EOT
+IAM Instance Profile to launch the instance with.
+This is specified as the name of the Instance Profile.
+EOT
+  type    = string
+  default = null
+}
+
+variable "root_volume_tags" {
+  description = "A mapping of tags to assign to the root volumes created by the instance at launch time."
+  type        = map(string)
+  default     = {
+    "Environment" = "Production"
+    "Team"        = "RootStorage"
+  }
+
+  validation {
+    condition = alltrue([
+      for key, value in var.root_volume_tags : 
+      can(regex("^[a-zA-Z0-9-_]+$", key)) && 
+      can(regex("^[a-zA-Z0-9-_ ]+$", value))
+    ])
+    error_message = "Each tag key must only contain alphanumeric characters, hyphens, and underscores. Each tag value must only contain alphanumeric characters, hyphens, underscores, and spaces."
+  }
+}
+
+variable "ebs_volume_tags" {
+  description = "A mapping of tags to assign to the EBS volumes created by the instance at launch time."
+  type        = map(string)
+  default     = {
+    "Environment" = "Production"
+    "Team"        = "EBSStorage"
+  }
+
+  validation {
+    condition = alltrue([
+      for key, value in var.ebs_volume_tags : 
+      can(regex("^[a-zA-Z0-9-_]+$", key)) && 
+      can(regex("^[a-zA-Z0-9-_ ]+$", value))
+    ])
+    error_message = "Each tag key must only contain alphanumeric characters, hyphens, and underscores. Each tag value must only contain alphanumeric characters, hyphens, underscores, and spaces."
+  }
 }
