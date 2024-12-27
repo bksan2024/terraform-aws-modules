@@ -1,381 +1,244 @@
+# Define the AWS partition data source to get the current partition details
 data "aws_partition" "current" {}
 
+
+# Define local variables
 locals {
- 
-  is_t_instance_type = replace(var.instance_type, "/^t(2|3|3a|4g){1}\\..*$/", "1") == "1" ? true : false
 
-  ami = try(coalesce(var.ami, try(nonsensitive(data.aws_ssm_parameter.this[0].value), null)), null)
+
+
 }
 
-data "aws_ssm_parameter" "this" {
-  count = var.ami == null ? 1 : 0
 
-  name = var.ami_ssm_parameter
+/*
+##Network Interface creation
+
+resource "aws_network_interface" "example" {
+  count = length(var.network_interface)
+
+  subnet_id       = var.network_interface[count.index].subnet_id
+  private_ips     = [var.network_interface[count.index].private_ip]
+  security_groups = var.network_interface[count.index].security_groups
+
+  tags = {
+    Name = "example-network-interface-${count.index}"
+  }
 }
+*/
+
+######Security Group Creation######################################################
+
+# Create a security group
+resource "aws_security_group" "this" {
+  name        = var.security_group_name
+  description = var.security_group_description
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    content {
+      from_port   = ingress.value.from_port
+      to_port     = ingress.value.to_port
+      protocol    = ingress.value.protocol
+      cidr_blocks = ingress.value.cidr_blocks
+      description = ingress.value.description
+    }
+  }
+
+  dynamic "egress" {
+    for_each = var.egress_rules
+    content {
+      from_port   = egress.value.from_port
+      to_port     = egress.value.to_port
+      protocol    = egress.value.protocol
+      cidr_blocks = egress.value.cidr_blocks
+      description = egress.value.description
+    }
+  }
+
+  tags = var.tags
+}
+
+
 
 ################################################################################
 # Instance
 ################################################################################
 
 resource "aws_instance" "this" {
-  count = !var.ignore_ami_changes ? 1 : 0
 
-  ami                  = local.ami
-  instance_type        = var.instance_type
-  #cpu_core_count       = var.cpu_core_count
-  #cpu_threads_per_core = var.cpu_threads_per_core
-  hibernation          = var.hibernation
+ for_each = var.instances
+     
+  ami = each.value.ami 
+  instance_type = each.value.instance_type 
+  key_name = each.value.key_name 
+  # Tags with Naming Convention 
+  tags = erge( { Name = join("", [ var.provider_name, var.os_type, var.server_type, var.environment_name, var.purpose, each.key ]) 
+       Owner = var.owner 
+       Application = var.application 
+       OS = var.os_name }, 
+       each.value.additional_tags
+       )  
+  
+  hibernation          = var.hibernation  # Enable hibernation for the instance
+  user_data                   = var.user_data  # User data script to run on instance launch
+  user_data_base64            = var.user_data_base64  # Base64 encoded user data
+  user_data_replace_on_change = var.user_data_replace_on_change  # Replace user data on change
+  availability_zone           = var.availability_zone  # Availability zone for the instance
+  subnet_id                   = element(var.subnet_id, 0)  # Subnet ID for the instance
+  vpc_security_group_ids      = [aws_security_group.this.id]  # Security group IDs for the instance
+  monitoring           = var.monitoring  # Enable detailed monitoring
+  get_password_data    = var.get_password_data  # Retrieve Windows password data
+  iam_instance_profile = var.create_iam_instance_profile ? aws_iam_instance_profile.this[0].name : var.iam_instance_profile  # IAM instance profile
+  # associate_public_ip_address = var.associate_public_ip_address  # Associate a public IP address
+  private_ip                  = var.private_ip  # Private IP address
+  secondary_private_ips       = var.secondary_private_ips  # Secondary private IP addresses
+  # Choose between ipv6_address_count or ipv6_addresses
+  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null  # Number of IPv6 addresses
+  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null  # List of IPv6 addresses
+  ebs_optimized = var.ebs_optimized  # Enable EBS optimization
 
-  user_data                   = var.user_data
-  user_data_base64            = var.user_data_base64
-  user_data_replace_on_change = var.user_data_replace_on_change
-
-  availability_zone      = var.availability_zone
-  subnet_id            = element(var.subnet_id, 0)
-  vpc_security_group_ids = var.vpc_security_group_ids
-
-  key_name             = var.key_name
-  monitoring           = var.monitoring
-  get_password_data    = var.get_password_data
-  iam_instance_profile = var.create_iam_instance_profile ? aws_iam_instance_profile.this[0].name : var.iam_instance_profile
-
-  associate_public_ip_address = var.associate_public_ip_address
-  private_ip                  = var.private_ip
-  secondary_private_ips       = var.secondary_private_ips
-# Choose between ipv6_address_count or ipv6_addresses
-  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null
-  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null
-
-
-  ebs_optimized = var.ebs_optimized
-
-  dynamic "cpu_options" {
-    for_each = length(var.cpu_options) > 0 ? [var.cpu_options] : []
-
-    content {
-      core_count       = try(cpu_options.value.core_count, null)
-      threads_per_core = try(cpu_options.value.threads_per_core, null)
-      amd_sev_snp      = try(cpu_options.value.amd_sev_snp, null)
-    }
-  }
-
-  dynamic "capacity_reservation_specification" {
-    for_each = length(var.capacity_reservation_specification) > 0 ? [var.capacity_reservation_specification] : []
-
-    content {
-      capacity_reservation_preference = try(capacity_reservation_specification.value.capacity_reservation_preference, null)
-
-      dynamic "capacity_reservation_target" {
-        for_each = try([capacity_reservation_specification.value.capacity_reservation_target], [])
-
-        content {
-          capacity_reservation_id                 = try(capacity_reservation_target.value.capacity_reservation_id, null)
-          capacity_reservation_resource_group_arn = try(capacity_reservation_target.value.capacity_reservation_resource_group_arn, null)
-        }
-      }
-    }
-  }
-
+  # Define dynamic blocks for root block devices
   dynamic "root_block_device" {
     for_each = var.root_block_device
 
     content {
-      delete_on_termination = try(root_block_device.value.delete_on_termination, null)
-      encrypted             = try(root_block_device.value.encrypted, null)
-      iops                  = try(root_block_device.value.iops, null)
-      kms_key_id            = lookup(root_block_device.value, "kms_key_id", null)
-      volume_size           = try(root_block_device.value.volume_size, null)
-      volume_type           = try(root_block_device.value.volume_type, null)
-      throughput            = try(root_block_device.value.throughput, null)
-      tags                  = try(root_block_device.value.tags, null)
+      delete_on_termination = try(root_block_device.value.delete_on_termination, null)  # Delete on termination
+      encrypted             = try(root_block_device.value.encrypted, null)  # Encryption
+      iops                  = try(root_block_device.value.iops, null)  # IOPS
+      kms_key_id            = lookup(root_block_device.value, "kms_key_id", null)  # KMS key ID
+      volume_size           = try(root_block_device.value.volume_size, null)  # Volume size
+      volume_type           = try(root_block_device.value.volume_type, null)  # Volume type
+      throughput            = try(root_block_device.value.throughput, null)  # Throughput
+      tags                  = try(root_block_device.value.root_block_device_tags, null)  # Tags
     }
   }
 
+  # Define dynamic blocks for EBS block devices
   dynamic "ebs_block_device" {
     for_each = var.ebs_block_device
 
     content {
-      delete_on_termination = try(ebs_block_device.value.delete_on_termination, null)
-      device_name           = ebs_block_device.value.device_name
-      encrypted             = try(ebs_block_device.value.encrypted, null)
-      iops                  = try(ebs_block_device.value.iops, null)
-      kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)
-      snapshot_id           = lookup(ebs_block_device.value, "snapshot_id", null)
-      volume_size           = try(ebs_block_device.value.volume_size, null)
-      volume_type           = try(ebs_block_device.value.volume_type, null)
-      throughput            = try(ebs_block_device.value.throughput, null)
-      tags                  = try(ebs_block_device.value.tags, null)
+      delete_on_termination = try(ebs_block_device.value.delete_on_termination, null)  # Delete on termination
+      device_name           = ebs_block_device.value.device_name  # Device name
+      encrypted             = try(ebs_block_device.value.encrypted, null)  # Encryption
+      iops                  = try(ebs_block_device.value.iops, null)  # IOPS
+      kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)  # KMS key ID
+      snapshot_id           = lookup(ebs_block_device.value, "snapshot_id", null)  # Snapshot ID
+      volume_size           = try(ebs_block_device.value.volume_size, null)  # Volume size
+      volume_type           = try(ebs_block_device.value.volume_type, null)  # Volume type
+      throughput            = try(ebs_block_device.value.throughput, null)  # Throughput
+      tags                  = try(ebs_block_device.value.ebs_block_device_tags, null)  # Tags
     }
   }
 
+  # Define dynamic blocks for ephemeral block devices
   dynamic "ephemeral_block_device" {
     for_each = var.ephemeral_block_device
 
     content {
-      device_name  = ephemeral_block_device.value.device_name
-      no_device    = try(ephemeral_block_device.value.no_device, null)
-      virtual_name = try(ephemeral_block_device.value.virtual_name, null)
+      device_name  = ephemeral_block_device.value.device_name  # Device name
+      no_device    = try(ephemeral_block_device.value.no_device, null)  # No device
+      virtual_name = try(ephemeral_block_device.value.virtual_name, null)  # Virtual name
     }
   }
 
+  # Define dynamic blocks for metadata options
   dynamic "metadata_options" {
     for_each = length(var.metadata_options) > 0 ? [var.metadata_options] : []
 
     content {
-      http_endpoint               = try(metadata_options.value.http_endpoint, "enabled")
-      http_tokens                 = try(metadata_options.value.http_tokens, "optional")
-      http_put_response_hop_limit = try(metadata_options.value.http_put_response_hop_limit, 1)
-      instance_metadata_tags      = try(metadata_options.value.instance_metadata_tags, null)
+      http_endpoint               = try(metadata_options.value.http_endpoint, "enabled")  # HTTP endpoint
+      http_tokens                 = try(metadata_options.value.http_tokens, "optional")  # HTTP tokens
+      http_put_response_hop_limit = try(metadata_options.value.http_put_response_hop_limit, 1)  # HTTP PUT response hop limit
+      instance_metadata_tags      = try(metadata_options.value.instance_metadata_tags, null)  # Instance metadata tags
     }
   }
 
+
+/*
+# Define dynamic blocks for network interfaces
   dynamic "network_interface" {
-    for_each = var.network_interface
-
+    for_each = aws_network_interface.example
     content {
-      device_index          = network_interface.value.device_index
-      network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
-      delete_on_termination = try(network_interface.value.delete_on_termination, false)
+      device_index          = var.network_interface[count.index].device_index  # Device index
+      network_interface_id  = aws_network_interface.example[count.index].id  # Network interface ID
+      delete_on_termination = try(var.network_interface[count.index].delete_on_termination, false)  # Delete on termination
     }
   }
+*/
 
+# dynamic "network_interface" {
+#   for_each = var.network_interface
+
+#   #tags = var.nic_tags
+  
+
+#   content {
+#     device_index          = network_interface.value.device_index
+#     network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
+#     delete_on_termination = try(network_interface.value.delete_on_termination, false)
+#         # Adding tags to the network interface
+
+
+#   }
+# }
+
+  # Define dynamic blocks for private DNS name options
   dynamic "private_dns_name_options" {
     for_each = length(var.private_dns_name_options) > 0 ? [var.private_dns_name_options] : []
 
     content {
-      hostname_type                        = try(private_dns_name_options.value.hostname_type, null)
-      enable_resource_name_dns_a_record    = try(private_dns_name_options.value.enable_resource_name_dns_a_record, null)
-      enable_resource_name_dns_aaaa_record = try(private_dns_name_options.value.enable_resource_name_dns_aaaa_record, null)
+      hostname_type                        = try(private_dns_name_options.value.hostname_type, null)  # Hostname type
+      enable_resource_name_dns_a_record    = try(private_dns_name_options.value.enable_resource_name_dns_a_record, null)  # Enable DNS A record
+      enable_resource_name_dns_aaaa_record = try(private_dns_name_options.value.enable_resource_name_dns_aaaa_record, null)  # Enable DNS AAAA record
     }
   }
 
+  # Define dynamic blocks for launch templates
   dynamic "launch_template" {
     for_each = length(var.launch_template) > 0 ? [var.launch_template] : []
 
     content {
-      id      = lookup(var.launch_template, "id", null)
-      name    = lookup(var.launch_template, "name", null)
-      version = lookup(var.launch_template, "version", null)
+      id      = lookup(var.launch_template, "id", null)  # Launch template ID
+      name    = lookup(var.launch_template, "name", null)  # Launch template name
+      version = lookup(var.launch_template, "version", null)  # Launch template version
     }
   }
-
+ 
+  # Define dynamic blocks for maintenance options
   dynamic "maintenance_options" {
     for_each = length(var.maintenance_options) > 0 ? [var.maintenance_options] : []
 
     content {
-      auto_recovery = try(maintenance_options.value.auto_recovery, null)
+      auto_recovery = try(maintenance_options.value.auto_recovery, null)  # Auto recovery
     }
   }
 
+  # Define enclave options
   enclave_options {
-    enabled = var.enclave_options_enabled
+    enabled = var.enclave_options_enabled  # Enable enclave options
   }
 
-  source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check
-  disable_api_termination              = var.disable_api_termination
-  #disable_api_stop                     = var.disable_api_stop
-  instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior
-  #placement_group                      = var.placement_group
-  tenancy                              = var.tenancy
-  host_id                              = var.host_id
+  # Define other instance options
+  source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check  # Source/destination check
+  disable_api_termination              = var.disable_api_termination  # Disable API termination
+  # disable_api_stop                     = var.disable_api_stop  # Disable API stop
+  instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior  # Instance initiated shutdown behavior
+  # placement_group                      = var.placement_group  # Placement group
+  tenancy                              = var.tenancy  # Tenancy
+  host_id                              = var.host_id  # Host ID
 
-  credit_specification {
-    cpu_credits = local.is_t_instance_type ? var.cpu_credits : null
-  }
-
+  # Define timeouts for instance creation, update, and deletion
   timeouts {
-    create = try(var.timeouts.create, null)
-    update = try(var.timeouts.update, null)
-    delete = try(var.timeouts.delete, null)
+    create = try(var.timeouts.create, null)  # Creation timeout
+    update = try(var.timeouts.update, null)  # Update timeout
+    delete = try(var.timeouts.delete, null)  # Deletion timeout
   }
 
-  tags        = merge({ "Name" = var.name }, var.instance_tags, var.tags)
-  volume_tags = var.enable_volume_tags ? merge({ "Name" = var.name }, var.volume_tags) : null
-}
-
-################################################################################
-# Instance - Ignore AMI Changes
-################################################################################
-
-resource "aws_instance" "ignore_ami" {
-  count = var.ignore_ami_changes? 1 : 0
-
-  ami                  = local.ami
-  instance_type        = var.instance_type
- # cpu_core_count       = var.cpu_core_count
- # cpu_threads_per_core = var.cpu_threads_per_core
-  hibernation          = var.hibernation
-
-  user_data                   = var.user_data
-  user_data_base64            = var.user_data_base64
-  user_data_replace_on_change = var.user_data_replace_on_change
-
-  availability_zone      = var.availability_zone
-  subnet_id            = element(var.subnet_id, 0)
-  vpc_security_group_ids = var.vpc_security_group_ids
-
-  key_name             = var.key_name
-  monitoring           = var.monitoring
-  get_password_data    = var.get_password_data
-  iam_instance_profile = var.create_iam_instance_profile ? aws_iam_instance_profile.this[0].name : var.iam_instance_profile
-
-  associate_public_ip_address = var.associate_public_ip_address
-  private_ip                  = var.private_ip
-  secondary_private_ips       = var.secondary_private_ips
-# Choose between ipv6_address_count or ipv6_addresses
-  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null
-  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null
-
-
-  ebs_optimized = var.ebs_optimized
-
-  dynamic "cpu_options" {
-    for_each = length(var.cpu_options) > 0 ? [var.cpu_options] : []
-
-    content {
-      core_count       = try(cpu_options.value.core_count, null)
-      threads_per_core = try(cpu_options.value.threads_per_core, null)
-      amd_sev_snp      = try(cpu_options.value.amd_sev_snp, null)
-    }
-  }
-
-  dynamic "capacity_reservation_specification" {
-    for_each = length(var.capacity_reservation_specification) > 0 ? [var.capacity_reservation_specification] : []
-
-    content {
-      capacity_reservation_preference = try(capacity_reservation_specification.value.capacity_reservation_preference, null)
-
-      dynamic "capacity_reservation_target" {
-        for_each = try([capacity_reservation_specification.value.capacity_reservation_target], [])
-
-        content {
-          capacity_reservation_id                 = try(capacity_reservation_target.value.capacity_reservation_id, null)
-          capacity_reservation_resource_group_arn = try(capacity_reservation_target.value.capacity_reservation_resource_group_arn, null)
-        }
-      }
-    }
-  }
-
-  dynamic "root_block_device" {
-    for_each = var.root_block_device
-
-    content {
-      delete_on_termination = try(root_block_device.value.delete_on_termination, null)
-      encrypted             = try(root_block_device.value.encrypted, null)
-      iops                  = try(root_block_device.value.iops, null)
-      kms_key_id            = lookup(root_block_device.value, "kms_key_id", null)
-      volume_size           = try(root_block_device.value.volume_size, null)
-      volume_type           = try(root_block_device.value.volume_type, null)
-      throughput            = try(root_block_device.value.throughput, null)
-      tags                  = try(root_block_device.value.tags, null)
-    }
-  }
-
-  dynamic "ebs_block_device" {
-    for_each = var.ebs_block_device
-
-    content {
-      delete_on_termination = try(ebs_block_device.value.delete_on_termination, null)
-      device_name           = ebs_block_device.value.device_name
-      encrypted             = try(ebs_block_device.value.encrypted, null)
-      iops                  = try(ebs_block_device.value.iops, null)
-      kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)
-      snapshot_id           = lookup(ebs_block_device.value, "snapshot_id", null)
-      volume_size           = try(ebs_block_device.value.volume_size, null)
-      volume_type           = try(ebs_block_device.value.volume_type, null)
-      throughput            = try(ebs_block_device.value.throughput, null)
-      tags                  = try(ebs_block_device.value.tags, null)
-    }
-  }
-
-  dynamic "ephemeral_block_device" {
-    for_each = var.ephemeral_block_device
-
-    content {
-      device_name  = ephemeral_block_device.value.device_name
-      no_device    = try(ephemeral_block_device.value.no_device, null)
-      virtual_name = try(ephemeral_block_device.value.virtual_name, null)
-    }
-  }
-
-  dynamic "metadata_options" {
-    for_each = length(var.metadata_options) > 0 ? [var.metadata_options] : []
-
-    content {
-      http_endpoint               = try(metadata_options.value.http_endpoint, "enabled")
-      http_tokens                 = try(metadata_options.value.http_tokens, "optional")
-      http_put_response_hop_limit = try(metadata_options.value.http_put_response_hop_limit, 1)
-      instance_metadata_tags      = try(metadata_options.value.instance_metadata_tags, null)
-    }
-  }
-
-  dynamic "network_interface" {
-    for_each = var.network_interface
-
-    content {
-      device_index          = network_interface.value.device_index
-      network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
-      delete_on_termination = try(network_interface.value.delete_on_termination, false)
-    }
-  }
-
-  dynamic "private_dns_name_options" {
-    for_each = length(var.private_dns_name_options) > 0 ? [var.private_dns_name_options] : []
-
-    content {
-      hostname_type                        = try(private_dns_name_options.value.hostname_type, null)
-      enable_resource_name_dns_a_record    = try(private_dns_name_options.value.enable_resource_name_dns_a_record, null)
-      enable_resource_name_dns_aaaa_record = try(private_dns_name_options.value.enable_resource_name_dns_aaaa_record, null)
-    }
-  }
-
-  dynamic "launch_template" {
-    for_each = length(var.launch_template) > 0 ? [var.launch_template] : []
-
-    content {
-      id      = lookup(var.launch_template, "id", null)
-      name    = lookup(var.launch_template, "name", null)
-      version = lookup(var.launch_template, "version", null)
-    }
-  }
-
-  dynamic "maintenance_options" {
-    for_each = length(var.maintenance_options) > 0 ? [var.maintenance_options] : []
-
-    content {
-      auto_recovery = try(maintenance_options.value.auto_recovery, null)
-    }
-  }
-
-  enclave_options {
-    enabled = var.enclave_options_enabled
-  }
-
-  source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check
-  disable_api_termination              = var.disable_api_termination
-  instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior
-  #placement_group                      = var.placement_group
-  tenancy                              = var.tenancy
-  host_id                              = var.host_id
-
-  credit_specification {
-    cpu_credits = local.is_t_instance_type ? var.cpu_credits : null
-  }
-
-  timeouts {
-    create = try(var.timeouts.create, null)
-    update = try(var.timeouts.update, null)
-    delete = try(var.timeouts.delete, null)
-  }
-
-  tags        = merge({ "Name" = var.name }, var.instance_tags, var.tags)
-  volume_tags = var.enable_volume_tags ? merge({ "Name" = var.name }, var.volume_tags) : null
-
-  lifecycle {
-    ignore_changes = [
-      ami
-    ]
-  }
+  # Define tags for the instance and volumes
+  #tags        = merge({ "Name" = var.name }, var.instance_tags, var.tags)  # Instance tags
+ # volume_tags = var.enable_volume_tags ? merge({ "Name" = var.name }, var.volume_tags) : null  # Volume tags
 }
 
 ################################################################################
@@ -383,58 +246,57 @@ resource "aws_instance" "ignore_ami" {
 ################################################################################
 
 locals {
-  iam_role_name = try(coalesce(var.iam_role_name, var.name), "")
+  iam_role_name = try(coalesce(var.iam_role_name, var.name), "")  # IAM role name
 }
-
+# Define the IAM policy document for assuming the role
 data "aws_iam_policy_document" "assume_role_policy" {
-  count = var.create_iam_instance_profile ? 1 : 0
+  count = var.create_iam_instance_profile ? 1 : 0  # Create policy document only if IAM instance profile is to be created
 
   statement {
-    sid     = "EC2AssumeRole"
-    actions = ["sts:AssumeRole"]
+    sid     = "EC2AssumeRole"  # Statement ID
+    actions = ["sts:AssumeRole"]  # Actions allowed
 
     principals {
-      type        = "Service"
-      identifiers = ["ec2.${data.aws_partition.current.dns_suffix}"]
+      type        = "Service"  # Principal type
+      identifiers = ["ec2.${data.aws_partition.current.dns_suffix}"]  # Service principal (EC2)
     }
   }
 }
 
+# Define the IAM role resource
 resource "aws_iam_role" "this" {
-  count = var.create_iam_instance_profile ? 1 : 0
+  count = var.create_iam_instance_profile ? 1 : 0  # Create IAM role only if IAM instance profile is to be created
 
-  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name
-  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null
-  path        = var.iam_role_path
-  description = var.iam_role_description
+  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name  # IAM role name
+  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null  # IAM role name prefix
+  path        = var.iam_role_path  # IAM role path
+  description = var.iam_role_description  # IAM role description
 
-  assume_role_policy    = data.aws_iam_policy_document.assume_role_policy[0].json
-  permissions_boundary  = var.iam_role_permissions_boundary
-  force_detach_policies = true
+  assume_role_policy    = data.aws_iam_policy_document.assume_role_policy[0].json  # Assume role policy
+  permissions_boundary  = var.iam_role_permissions_boundary  # Permissions boundary
+  force_detach_policies = true  # Force detach policies
 
-  tags = merge(var.tags, var.iam_role_tags)
+  tags = merge(var.tags, var.iam_role_tags)  # Tags for the IAM role
 }
 
+# Attach policies to the IAM role
 resource "aws_iam_role_policy_attachment" "this" {
-  for_each = { for k, v in var.iam_role_policies : k => v if var.create_iam_instance_profile }
-
-  policy_arn = each.value
-  role       = aws_iam_role.this[0].name
+  for_each = { for k, v in var.iam_role_policies : k => v if var.create_iam_instance_profile }  # Iterate over IAM role policies
+  policy_arn = each.value  # Policy ARN
+  role       = aws_iam_role.this[0].name  # IAM role name
 }
 
+# Define the IAM instance profile resource
 resource "aws_iam_instance_profile" "this" {
-  count = var.create_iam_instance_profile ? 1 : 0
-
-  role = aws_iam_role.this[0].name
-
-  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name
-  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null
-  path        = var.iam_role_path
-
-  tags = merge(var.tags, var.iam_role_tags)
+  count = var.create_iam_instance_profile ? 1 : 0  # Create IAM instance profile only if specified
+  role = aws_iam_role.this[0].name  # IAM role name
+  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name  # Instance profile name
+  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null  # Instance profile name prefix
+  path        = var.iam_role_path  # Instance profile path
+  tags = merge(var.tags, var.iam_role_tags)  # Tags for the instance profile
 
   lifecycle {
-    create_before_destroy = true
+    create_before_destroy = true  # Ensure new instance profile is created before destroying the old one
   }
 }
 
@@ -442,6 +304,9 @@ resource "aws_iam_instance_profile" "this" {
 # Elastic IP
 ################################################################################
 
+##The Public IP block below is commented out as per THR instructions. It can be enabled in the future if required on an exception basis
+
+/*
 resource "aws_eip" "this" {
   count = var.create_eip ? 1 : 0
 
@@ -454,3 +319,4 @@ resource "aws_eip" "this" {
 
   tags = merge(var.tags, var.eip_tags)
 }
+*/
