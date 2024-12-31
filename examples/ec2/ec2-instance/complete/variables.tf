@@ -48,6 +48,23 @@ EOT
   }
 }
 
+# Security group tags to apply to all resources managed by the providers
+variable "security_group_tags" {
+  description = <<EOT
+A map of Security group tags to be applied to all Security groups which has been created. 
+Tags are key-value pairs that help with resource identification, cost management, and access control.
+Examples:
+- Environment: dev, test, prod
+- Team: DevOps, Security
+- Project: your-project-name
+EOT
+  type = map(string)
+  default = {
+    Name = "Windows Firewall"
+    purpose        = "Restrict access"
+    Application     = "Citrix-Test"
+  }
+}
 
 
 # Variable: name
@@ -497,13 +514,17 @@ EOT
 #   }
 # ]
 
+
 variable "network_interface" {
-  description = <<EOT
-Customize network interfaces to be attached at instance boot time.
-This includes attributes such as device index, subnet ID, and security groups.
-EOT
-  type    = list(map(string))
-  default = []
+  description = "Configuration for network interfaces"
+  default = {}
+
+  type = map(object({
+    device_index          = number
+    network_interface_id  = optional(string)
+    delete_on_termination = optional(bool)
+    additional_tags       = optional(map(string), {})
+  }))
 }
 
 
@@ -553,10 +574,6 @@ variable "provider_name" {
   type        = string
 }
 
-variable "os_name" {
-  description = "Name of the operating system"
-  type        = string
-}
 
 variable "environment_name" {
   description = "Name of the environment"
@@ -589,6 +606,17 @@ variable "server_type" {
   type        = string
   default     = "ap"
 }
+
+variable "os_family" {
+  description = "The operating system family (e.g., linux, windows)"
+  type        = string
+
+  validation {
+    condition     = contains(["l", "w"], var.os_family)
+    error_message = "The os_family variable must be either 'linux' or 'windows'."
+  }
+}
+
 
 # Variable: iam_instance_profile
 # Specifies the IAM Instance Profile to use.
@@ -639,3 +667,43 @@ variable "ebs_volume_tags" {
     error_message = "Each tag key must only contain alphanumeric characters, hyphens, and underscores. Each tag value must only contain alphanumeric characters, hyphens, underscores, and spaces."
   }
 }
+
+variable "launch_template" {
+  description = <<EOT
+Specifies a Launch Template to configure the instance. 
+Parameters configured on this resource will override the corresponding parameters in the Launch Template.
+EOT
+type = map(any)
+  
+}
+
+/*
+variable "log_retention_days" {
+  description = "Number of days to retain logs in CloudWatch Log Group"
+  type        = number
+  default     = 90
+}
+
+
+variable "enable_guardduty" {
+  description = "Enable GuardDuty detector"
+  type        = bool
+  default     = true
+}
+
+variable "enable_securityhub" {
+  description = "Enable SecurityHub best practices"
+  type        = bool
+  default     = true
+}
+
+variable "ssm_logging_document_content" {
+  description = "Content of the SSM document for enabling instance logging"
+  type        = string
+
+  validation {
+    condition     = can(jsondecode(var.ssm_logging_document_content))
+    error_message = "The ssm_logging_document_content variable must be a valid JSON string."
+  }
+}
+*/
