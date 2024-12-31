@@ -48,7 +48,7 @@ variable "ami" {
 }
 
 
-/*
+
 # Variable: associate_public_ip_address
 # Indicates whether to associate a public IP address with the instance.
 # Default: false
@@ -62,10 +62,12 @@ Defaults to 'false', ensuring instances remain private unless explicitly set.
 EOT
   type    = bool
   default = false
+
+  validation {
+    condition     = var.associate_public_ip_address == false
+    error_message = "The associate_public_ip_address variable must be set to false."
+  }
 }
-
-*/
-
 
 # Variable: maintenance_options
 # Specifies the maintenance options for the instance.
@@ -136,7 +138,7 @@ variable "ebs_block_device" {
     volume_size           = number
     volume_type           = string
     throughput            = optional(number)
-    tags                  = optional(map(string), {})
+    tags                  = optional(map(string))
   }))
   
   validation {
@@ -406,11 +408,8 @@ variable "launch_template" {
 Specifies a Launch Template to configure the instance. 
 Parameters configured on this resource will override the corresponding parameters in the Launch Template.
 EOT
-  type = object({
-    id      = string
-    version = string
-  })
-  default = {}
+type = map(any)
+  
 }
 
 
@@ -1174,6 +1173,24 @@ EOT
   }
 }
 
+# Security group tags to apply to all resources managed by the providers
+variable "security_group_tags" {
+  description = <<EOT
+A map of Security group tags to be applied to all Security groups which has been created. 
+Tags are key-value pairs that help with resource identification, cost management, and access control.
+Examples:
+- Environment: dev, test, prod
+- Team: DevOps, Security
+- Project: your-project-name
+EOT
+  type = map(string)
+  default = {
+    Name = "Windows Firewall"
+    purpose        = "Restrict access"
+    Application     = "Citrix-Test"
+  }
+}
+
 #######################################################################################################################
 #####Security Group Variables#############################################################
 
@@ -1261,17 +1278,10 @@ variable "provider_name" {
   }
 }
 
-// Name of the operating system (e.g., "linux", "windows")
-variable "os_name" {
-  description = "Name of the operating system"
-  type        = string
 
-  // Validation to ensure the OS name is either "linux" or "windows"
-  validation {
-    condition     = var.os_name == "linux" || var.os_name == "windows"
-    error_message = "The OS name must be either 'linux' or 'windows'."
-  }
-}
+
+
+
 
 // Name of the environment (e.g., "prod", "dev")
 variable "environment_name" {
@@ -1280,8 +1290,8 @@ variable "environment_name" {
 
   // Validation to ensure the environment name is either "prod" or "dev"
   validation {
-    condition     = var.environment_name == "prod" || var.environment_name == "dev"
-    error_message = "The environment name must be either 'prod' or 'dev'."
+    condition     = var.environment_name == "p" || var.environment_name == "d"
+    error_message = "The environment name must be either 'p' or 'd'."
   }
 }
 
@@ -1335,3 +1345,44 @@ variable "server_type" {
     error_message = "The server type must not be empty."
   }
 }
+
+variable "os_family" {
+  description = "The operating system family (e.g., linux, windows)"
+  type        = string
+
+  validation {
+    condition     = contains(["l", "w"], var.os_family)
+    error_message = "The os_family variable must be either 'linux' or 'windows'."
+  }
+}
+
+/*
+variable "log_retention_days" {
+  description = "Number of days to retain logs in CloudWatch Log Group"
+  type        = number
+  default     = 90
+}
+
+
+variable "enable_guardduty" {
+  description = "Enable GuardDuty detector"
+  type        = bool
+  default     = true
+}
+
+variable "enable_securityhub" {
+  description = "Enable SecurityHub best practices"
+  type        = bool
+  default     = true
+}
+
+variable "ssm_logging_document_content" {
+  description = "Content of the SSM document for enabling instance logging"
+  type        = string
+
+  validation {
+    condition     = can(jsondecode(var.ssm_logging_document_content))
+    error_message = "The ssm_logging_document_content variable must be a valid JSON string."
+  }
+}
+*/
