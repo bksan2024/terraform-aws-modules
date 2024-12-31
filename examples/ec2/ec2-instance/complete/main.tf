@@ -27,19 +27,7 @@ module "aws_provider" {
 # Data source to get the available AWS availability zones
 data "aws_availability_zones" "available" {}
 
-# Define local variables
-locals {
-  name = "awlappturbonapp01"  # Name for the resources
 
-  user_data = var.user_data_base64  # Base64 encoded user data
-
-  # Tags to be applied to the resources
-  tags = {
-    Name       = local.name
-    Example    = local.name
-    Repository = "https://github.com/manulife-innersource/aws-catalog.git"
-  }
-}
 
 # Include a module for creating EC2 instances with complete configuration
 module "ec2_complete" {
@@ -54,11 +42,11 @@ egress_rules = var.egress_rules
 
 instances = var.instances
 provider_name    = var.provider_name
-os_name          = var.os_name
 server_type = var.server_type
+os_family = var.os_family
 environment_name = var.environment_name
 purpose = var.purpose
-#additional_tags = var.additional_tags
+additional_tags = var.additional_tags
 
 ##Ec2 instance###################################################################################
   #name                     = var.name  # Name for the EC2 instances
@@ -68,6 +56,7 @@ purpose = var.purpose
   availability_zone        = var.availability_zone  # Availability zone for the instances
   subnet_id                = var.subnet_id  # Subnet ID for the instances
   vpc_security_group_ids   = var.vpc_security_group_ids  # Security group IDs for the instances
+  security_group_tags = var.security_group_tags
   # placement_group          = var.placement_group  # Placement group for the instances (commented out)
   create_eip               = var.create_eip  # Whether to create an Elastic IP
   # disable_api_stop         = var.disable_api_stop  # Whether to disable API stop (commented out)
@@ -75,6 +64,7 @@ purpose = var.purpose
   #iam_role_description     = var.iam_role_description  # Description for the IAM role
   #iam_role_policies        = var.iam_role_policies  # Policies to attach to the IAM role
   iam_instance_profile = var.iam_instance_profile
+  launch_template = var.launch_template
 
   hibernation              = var.hibernation  # Enable hibernation for the instances
   enclave_options_enabled  = var.enclave_options_enabled  # Enable enclave options
@@ -94,7 +84,7 @@ purpose = var.purpose
       volume_type = var.root_block_device_volume_type  # Volume type (e.g., gp2)
       throughput  = var.root_block_device_throughput  # Throughput for the volume
       volume_size = var.root_block_device_volume_size  # Size of the volume
-      tags        = var.root_volume_tags  # Tags for the volume
+      tags        = merge(var.default_tags, var.root_block_device_tags)  # Tags for the volume
     },
   ]
 
@@ -107,10 +97,17 @@ purpose = var.purpose
       throughput  = var.ebs_block_device_throughput  # Throughput for the volume
       encrypted   = var.ebs_block_device_encrypted  # Encrypt the volume
       kms_key_id  = var.ebs_block_device_kms_key_id  # KMS key ID for encryption
-      tags        = var.ebs_volume_tags  # Tags for the volume
+      tags        = merge(var.default_tags, var.ebs_block_device_tags)   # Tags for the volume
     }
   ]
 
-  tags = var.tags  # Tags to be applied to the instances
+
+# log_retention_days = var.log_retention_days
+# enable_guardduty = var.enable_guardduty
+# enable_securityhub = var.enable_securityhub
+# ssm_logging_document_content = var.ssm_logging_document_content
+
+  tags = merge(var.default_tags, var.root_block_device_tags, var.ebs_block_device_tags, var.additional_tags)  # Tags to be applied to the instances
+
 
 }
