@@ -2,29 +2,6 @@
 data "aws_partition" "current" {}
 
 
-# Define local variables
-locals {
-
-
-
-}
-
-
-/*
-##Network Interface creation
-
-resource "aws_network_interface" "example" {
-  count = length(var.network_interface)
-
-  subnet_id       = var.network_interface[count.index].subnet_id
-  private_ips     = [var.network_interface[count.index].private_ip]
-  security_groups = var.network_interface[count.index].security_groups
-
-  tags = {
-    Name = "example-network-interface-${count.index}"
-  }
-}
-*/
 
 ######Security Group Creation######################################################
 
@@ -56,7 +33,7 @@ resource "aws_security_group" "this" {
     }
   }
 
-  tags = var.tags
+  tags = var.security_group_tags
 }
 
 
@@ -67,18 +44,18 @@ resource "aws_security_group" "this" {
 
 resource "aws_instance" "this" {
 
+
+ #Basicinstance Properties
  for_each = var.instances
      
   ami = each.value.ami 
   instance_type = each.value.instance_type 
   key_name = each.value.key_name 
   # Tags with Naming Convention 
-  tags = erge( { Name = join("", [ var.provider_name, var.os_type, var.server_type, var.environment_name, var.purpose, each.key ]) 
-       Owner = var.owner 
-       Application = var.application 
-       OS = var.os_name }, 
-       each.value.additional_tags
-       )  
+  #tags = merge( { Name = join("", [ var.provider_name, var.os_family, var.server_type, var.environment_name, var.purpose, each.key ]) }) 
+  tags                        = merge(
+                                  { Name = join("", [var.provider_name, var.os_family, var.server_type, var.environment_name, var.purpose, format("%02d", each.key + 1)]) },
+                                  each.value.additional_tags )
   
   hibernation          = var.hibernation  # Enable hibernation for the instance
   user_data                   = var.user_data  # User data script to run on instance launch
@@ -90,7 +67,7 @@ resource "aws_instance" "this" {
   monitoring           = var.monitoring  # Enable detailed monitoring
   get_password_data    = var.get_password_data  # Retrieve Windows password data
   iam_instance_profile = var.create_iam_instance_profile ? aws_iam_instance_profile.this[0].name : var.iam_instance_profile  # IAM instance profile
-  # associate_public_ip_address = var.associate_public_ip_address  # Associate a public IP address
+  associate_public_ip_address = var.associate_public_ip_address  # Associate a public IP address is restricted as per THR 
   private_ip                  = var.private_ip  # Private IP address
   secondary_private_ips       = var.secondary_private_ips  # Secondary private IP addresses
   # Choose between ipv6_address_count or ipv6_addresses
@@ -99,6 +76,7 @@ resource "aws_instance" "this" {
   ebs_optimized = var.ebs_optimized  # Enable EBS optimization
 
   # Define dynamic blocks for root block devices
+  #Encrypt the root block devices --> THR
   dynamic "root_block_device" {
     for_each = var.root_block_device
 
@@ -110,11 +88,13 @@ resource "aws_instance" "this" {
       volume_size           = try(root_block_device.value.volume_size, null)  # Volume size
       volume_type           = try(root_block_device.value.volume_type, null)  # Volume type
       throughput            = try(root_block_device.value.throughput, null)  # Throughput
-      tags                  = try(root_block_device.value.root_block_device_tags, null)  # Tags
+      tags                 = try(root_block_device.value.root_block_device_tags, null)  # Tags
+      #tags                  = merge(var.root_block_device_tags, var.additional_tags, var.default_tags)
     }
   }
 
   # Define dynamic blocks for EBS block devices
+  #Encrypt the additional EBS Block Devices --> THR
   dynamic "ebs_block_device" {
     for_each = var.ebs_block_device
 
@@ -128,7 +108,8 @@ resource "aws_instance" "this" {
       volume_size           = try(ebs_block_device.value.volume_size, null)  # Volume size
       volume_type           = try(ebs_block_device.value.volume_type, null)  # Volume type
       throughput            = try(ebs_block_device.value.throughput, null)  # Throughput
-      tags                  = try(ebs_block_device.value.ebs_block_device_tags, null)  # Tags
+      tags                 = try(ebs_block_device.value.ebs_block_device_tags, null)  # Tags
+    
     }
   }
 
@@ -142,47 +123,36 @@ resource "aws_instance" "this" {
       virtual_name = try(ephemeral_block_device.value.virtual_name, null)  # Virtual name
     }
   }
-
+  #Enforce metadata access via IMDsv2 enforced --> THR
   # Define dynamic blocks for metadata options
   dynamic "metadata_options" {
     for_each = length(var.metadata_options) > 0 ? [var.metadata_options] : []
 
     content {
       http_endpoint               = try(metadata_options.value.http_endpoint, "enabled")  # HTTP endpoint
-      http_tokens                 = try(metadata_options.value.http_tokens, "optional")  # HTTP tokens
+      http_tokens                 = try(metadata_options.value.http_tokens, "required")  # HTTP tokens
       http_put_response_hop_limit = try(metadata_options.value.http_put_response_hop_limit, 1)  # HTTP PUT response hop limit
       instance_metadata_tags      = try(metadata_options.value.instance_metadata_tags, null)  # Instance metadata tags
     }
   }
 
 
-/*
+
 # Define dynamic blocks for network interfaces
-  dynamic "network_interface" {
-    for_each = aws_network_interface.example
-    content {
-      device_index          = var.network_interface[count.index].device_index  # Device index
-      network_interface_id  = aws_network_interface.example[count.index].id  # Network interface ID
-      delete_on_termination = try(var.network_interface[count.index].delete_on_termination, false)  # Delete on termination
-    }
+
+dynamic "network_interface" {
+  for_each = var.network_interface
+
+
+  content {
+    device_index          = network_interface.value.device_index
+    network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
+    delete_on_termination = try(network_interface.value.delete_on_termination, false)
+        # Adding tags to the network interface
+
+
   }
-*/
-
-# dynamic "network_interface" {
-#   for_each = var.network_interface
-
-#   #tags = var.nic_tags
-  
-
-#   content {
-#     device_index          = network_interface.value.device_index
-#     network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
-#     delete_on_termination = try(network_interface.value.delete_on_termination, false)
-#         # Adding tags to the network interface
-
-
-#   }
-# }
+}
 
   # Define dynamic blocks for private DNS name options
   dynamic "private_dns_name_options" {
@@ -220,7 +190,7 @@ resource "aws_instance" "this" {
     enabled = var.enclave_options_enabled  # Enable enclave options
   }
 
-  # Define other instance options
+  # Define  instance level policies 
   source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check  # Source/destination check
   disable_api_termination              = var.disable_api_termination  # Disable API termination
   # disable_api_stop                     = var.disable_api_stop  # Disable API stop
@@ -236,9 +206,18 @@ resource "aws_instance" "this" {
     delete = try(var.timeouts.delete, null)  # Deletion timeout
   }
 
+    lifecycle {
+    create_before_destroy = true
+    prevent_destroy       = false
+    ignore_changes        = [
+      root_block_device,
+      ebs_block_device
+    ]
+  }
+
   # Define tags for the instance and volumes
-  #tags        = merge({ "Name" = var.name }, var.instance_tags, var.tags)  # Instance tags
- # volume_tags = var.enable_volume_tags ? merge({ "Name" = var.name }, var.volume_tags) : null  # Volume tags
+  tags_all =  merge(var.default_tags, var.root_block_device_tags, var.ebs_block_device_tags, var.additional_tags)
+
 }
 
 ################################################################################
@@ -297,26 +276,42 @@ resource "aws_iam_instance_profile" "this" {
 
   lifecycle {
     create_before_destroy = true  # Ensure new instance profile is created before destroying the old one
+
+
   }
 }
 
-################################################################################
-# Elastic IP
-################################################################################
-
-##The Public IP block below is commented out as per THR instructions. It can be enabled in the future if required on an exception basis
 
 /*
-resource "aws_eip" "this" {
-  count = var.create_eip ? 1 : 0
+# CloudWatch Log Group for EC2 instance logs
+resource "aws_cloudwatch_log_group" "ec2_logs" {
+  name              = "/aws/ec2/instance-logs"
+  retention_in_days = var.log_retention_days
+  tags              = var.tags
+}
 
-  instance = try(
-    aws_instance.this[0].id,
-    aws_instance.ignore_ami[0].id,
-  )
+# CloudWatch Log Stream for EC2 instance logs
+resource "aws_cloudwatch_log_stream" "ec2_stream" {
+  name           = "instance-log-stream"
+  log_group_name = aws_cloudwatch_log_group.ec2_logs.name
+}
 
-  domain = var.eip_domain
+# SSM Document for enabling logging on EC2 instances
+resource "aws_ssm_document" "enable_logging" {
+  name          = "EnableInstanceLogging"
+  document_type = "Command"
+  content       = var.ssm_logging_document_content
+  tags          = var.tags
+}
 
-  tags = merge(var.tags, var.eip_tags)
+
+# GuardDuty for Threat Protection
+resource "aws_guardduty_detector" "main" {
+  count = var.enable_guardduty ? 1 : 0
+  enable = true
+}
+resource "aws_securityhub_standards_subscription" "best_practices" {
+  count        = var.enable_securityhub ? 1 : 0
+  standards_arn = "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0"
 }
 */
