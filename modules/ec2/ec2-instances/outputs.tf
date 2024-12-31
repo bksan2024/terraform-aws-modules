@@ -187,3 +187,32 @@ output "security_group_id" {
   description = "The ID of the security group"
   value       = aws_security_group.this.id
 }
+
+
+/*
+# Outputs
+output "cloudwatch_log_group_name" {
+  description = "Name of the CloudWatch Log Group"
+  value       = aws_cloudwatch_log_group.ec2_logs.name
+}
+
+output "cloudwatch_log_stream_name" {
+  description = "Name of the CloudWatch Log Stream"
+  value       = aws_cloudwatch_log_stream.ec2_stream.name
+}
+
+output "ssm_document_name" {
+  description = "Name of the SSM document for enabling logging"
+  value       = aws_ssm_document.enable_logging.name
+}
+
+output "guardduty_detector_id" {
+  description = "ID of the GuardDuty detector"
+  value       = var.enable_guardduty ? aws_guardduty_detector.main[0].id : null
+}
+
+output "securityhub_subscription_arn" {
+  description = "ARN of the SecurityHub subscription"
+  value       = var.enable_securityhub ? aws_securityhub_standards_subscription.best_practices[0].id : null
+}
+*/
