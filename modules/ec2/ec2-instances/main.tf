@@ -1,12 +1,21 @@
 # Define the AWS partition data source to get the current partition details
 data "aws_partition" "current" {}
 
+locals {
+  ebs-device-id = 00
+  iam_role_name = var.iam_role_name  # IAM role name
+  provider_name = "aw"
+  server_type = "ap"
+  environment_name = "p"
+  instance_names = {
+    for k, v in var.instances : k => join("", [local.provider_name, var.os_family, local.server_type, local.environment_name, var.purpose, format("%02d", k + 1)])
+  }
+}
 
-
-######Security Group Creation######################################################
+###### Security Group Creation ######################################################
 
 # Create a security group
-resource "aws_security_group" "this" {
+resource "aws_security_group" "sg" {
   name        = var.security_group_name
   description = var.security_group_description
   vpc_id      = var.vpc_id
@@ -36,49 +45,44 @@ resource "aws_security_group" "this" {
   tags = var.security_group_tags
 }
 
-
-
 ################################################################################
 # Instance
 ################################################################################
 
-resource "aws_instance" "this" {
+resource "aws_instance" "ec2" {
+  # Basic instance properties
+  for_each = { for idx, instance in var.instances : idx => instance }
 
+  ami = each.value.ami
+  instance_type = each.value.instance_type
+  key_name = each.value.key_name
 
- #Basicinstance Properties
- for_each = var.instances
-     
-  ami = each.value.ami 
-  instance_type = each.value.instance_type 
-  key_name = each.value.key_name 
-  # Tags with Naming Convention 
-  #tags = merge( { Name = join("", [ var.provider_name, var.os_family, var.server_type, var.environment_name, var.purpose, each.key ]) }) 
-  tags                        = merge(
-                                  { Name = join("", [var.provider_name, var.os_family, var.server_type, var.environment_name, var.purpose, format("%02d", each.key + 1)]) },
-                                  each.value.additional_tags )
-  
-  hibernation          = var.hibernation  # Enable hibernation for the instance
+  # Tags with Naming Convention  
+  tags = merge(
+    { Name = local.instance_names[each.key] },
+    each.value.additional_tags
+  )
+
   user_data                   = var.user_data  # User data script to run on instance launch
   user_data_base64            = var.user_data_base64  # Base64 encoded user data
   user_data_replace_on_change = var.user_data_replace_on_change  # Replace user data on change
   availability_zone           = var.availability_zone  # Availability zone for the instance
   subnet_id                   = element(var.subnet_id, 0)  # Subnet ID for the instance
-  vpc_security_group_ids      = [aws_security_group.this.id]  # Security group IDs for the instance
-  monitoring           = var.monitoring  # Enable detailed monitoring
-  get_password_data    = var.get_password_data  # Retrieve Windows password data
-  iam_instance_profile = var.create_iam_instance_profile ? aws_iam_instance_profile.this[0].name : var.iam_instance_profile  # IAM instance profile
-  associate_public_ip_address = var.associate_public_ip_address  # Associate a public IP address is restricted as per THR 
+  vpc_security_group_ids      = [aws_security_group.sg.id]  # Security group IDs for the instance
+  monitoring                  = var.monitoring  # Enable detailed monitoring
+  get_password_data           = var.get_password_data  # Retrieve Windows password data
+  #iam_instance_profile        = var.iam_instance_profile  # Use existing IAM instance profile
+  iam_instance_profile        = var.create_iam_role ? aws_iam_instance_profile.iam_instance_profile[0].name : var.iam_instance_profile_name  # Use existing or newly created IAM instance profile
   private_ip                  = var.private_ip  # Private IP address
   secondary_private_ips       = var.secondary_private_ips  # Secondary private IP addresses
-  # Choose between ipv6_address_count or ipv6_addresses
-  ipv6_address_count = var.ipv6_address_count != null ? var.ipv6_address_count : null  # Number of IPv6 addresses
-  ipv6_addresses     = var.ipv6_addresses != null && length(var.ipv6_addresses) > 0 ? var.ipv6_addresses : null  # List of IPv6 addresses
+
+  # EBS Optimized was enabled default true as per Checkov Recommendation
   ebs_optimized = var.ebs_optimized  # Enable EBS optimization
 
-  # Define dynamic blocks for root block devices
-  #Encrypt the root block devices --> THR
+  # Define dynamic blocks for root block device
   dynamic "root_block_device" {
     for_each = var.root_block_device
+    
 
     content {
       delete_on_termination = try(root_block_device.value.delete_on_termination, null)  # Delete on termination
@@ -88,43 +92,47 @@ resource "aws_instance" "this" {
       volume_size           = try(root_block_device.value.volume_size, null)  # Volume size
       volume_type           = try(root_block_device.value.volume_type, null)  # Volume type
       throughput            = try(root_block_device.value.throughput, null)  # Throughput
-      tags                 = try(root_block_device.value.root_block_device_tags, null)  # Tags
-      #tags                  = merge(var.root_block_device_tags, var.additional_tags, var.default_tags)
+      tags = {
+        Name = "EBS-OS-USE-${local.instance_names[each.key]}-root-volume-${each.key + 1}"
+        ebs_volume_id = "${each.key + 1}"
+        ebs_volume_size = "${root_block_device.value.volume_size}GB"
+      }
     }
   }
 
   # Define dynamic blocks for EBS block devices
-  #Encrypt the additional EBS Block Devices --> THR
   dynamic "ebs_block_device" {
     for_each = var.ebs_block_device
-
     content {
-      delete_on_termination = try(ebs_block_device.value.delete_on_termination, null)  # Delete on termination
-      device_name           = ebs_block_device.value.device_name  # Device name
-      encrypted             = try(ebs_block_device.value.encrypted, null)  # Encryption
-      iops                  = try(ebs_block_device.value.iops, null)  # IOPS
-      kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)  # KMS key ID
-      snapshot_id           = lookup(ebs_block_device.value, "snapshot_id", null)  # Snapshot ID
-      volume_size           = try(ebs_block_device.value.volume_size, null)  # Volume size
-      volume_type           = try(ebs_block_device.value.volume_type, null)  # Volume type
-      throughput            = try(ebs_block_device.value.throughput, null)  # Throughput
-      tags                 = try(ebs_block_device.value.ebs_block_device_tags, null)  # Tags
-    
+      delete_on_termination = try(ebs_block_device.value.delete_on_termination, null)
+      device_name           = ebs_block_device.value.device_name
+      encrypted             = try(ebs_block_device.value.encrypted, null)
+      iops                  = try(ebs_block_device.value.iops, null)
+      kms_key_id            = lookup(ebs_block_device.value, "kms_key_id", null)
+      volume_size           = try(ebs_block_device.value.volume_size, null)
+      volume_type           = try(ebs_block_device.value.volume_type, null)
+      throughput            = try(ebs_block_device.value.throughput, null)
+
+      tags = {
+        Name            = "EBS-OS-USE-${local.instance_names[each.key]}-ebs-volume-${format("%02d", each.key + 1)}"
+        ebs_volume_id   = format("%02d", each.key + 1)
+        ebs_volume_size = "${ebs_block_device.value.volume_size}GB"
+      }
     }
   }
 
   # Define dynamic blocks for ephemeral block devices
-  dynamic "ephemeral_block_device" {
-    for_each = var.ephemeral_block_device
 
+dynamic "network_interface" {
+    for_each = var.network_interface
     content {
-      device_name  = ephemeral_block_device.value.device_name  # Device name
-      no_device    = try(ephemeral_block_device.value.no_device, null)  # No device
-      virtual_name = try(ephemeral_block_device.value.virtual_name, null)  # Virtual name
+      device_index          = network_interface.value.device_index
+      network_interface_id  = network_interface.value.network_interface_id
+      delete_on_termination = network_interface.value.delete_on_termination
     }
-  }
-  #Enforce metadata access via IMDsv2 enforced --> THR
-  # Define dynamic blocks for metadata options
+}
+
+  # Enforce metadata access via IMDsv2 enforced
   dynamic "metadata_options" {
     for_each = length(var.metadata_options) > 0 ? [var.metadata_options] : []
 
@@ -136,23 +144,16 @@ resource "aws_instance" "this" {
     }
   }
 
+  # Define dynamic blocks for network interfaces
+  dynamic "network_interface" {
+    for_each = var.network_interface
 
-
-# Define dynamic blocks for network interfaces
-
-dynamic "network_interface" {
-  for_each = var.network_interface
-
-
-  content {
-    device_index          = network_interface.value.device_index
-    network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
-    delete_on_termination = try(network_interface.value.delete_on_termination, false)
-        # Adding tags to the network interface
-
-
+    content {
+      device_index          = network_interface.value.device_index
+      network_interface_id  = lookup(network_interface.value, "network_interface_id", null)
+      delete_on_termination = try(network_interface.value.delete_on_termination, false)
+    }
   }
-}
 
   # Define dynamic blocks for private DNS name options
   dynamic "private_dns_name_options" {
@@ -175,7 +176,7 @@ dynamic "network_interface" {
       version = lookup(var.launch_template, "version", null)  # Launch template version
     }
   }
- 
+
   # Define dynamic blocks for maintenance options
   dynamic "maintenance_options" {
     for_each = length(var.maintenance_options) > 0 ? [var.maintenance_options] : []
@@ -190,23 +191,20 @@ dynamic "network_interface" {
     enabled = var.enclave_options_enabled  # Enable enclave options
   }
 
-  # Define  instance level policies 
+  # Define instance level policies 
   source_dest_check                    = length(var.network_interface) > 0 ? null : var.source_dest_check  # Source/destination check
   disable_api_termination              = var.disable_api_termination  # Disable API termination
-  # disable_api_stop                     = var.disable_api_stop  # Disable API stop
   instance_initiated_shutdown_behavior = var.instance_initiated_shutdown_behavior  # Instance initiated shutdown behavior
-  # placement_group                      = var.placement_group  # Placement group
   tenancy                              = var.tenancy  # Tenancy
   host_id                              = var.host_id  # Host ID
-
-  # Define timeouts for instance creation, update, and deletion
+   # Define timeouts for instance creation, update, and deletion
   timeouts {
     create = try(var.timeouts.create, null)  # Creation timeout
     update = try(var.timeouts.update, null)  # Update timeout
     delete = try(var.timeouts.delete, null)  # Deletion timeout
   }
 
-    lifecycle {
+  lifecycle {
     create_before_destroy = true
     prevent_destroy       = false
     ignore_changes        = [
@@ -216,102 +214,60 @@ dynamic "network_interface" {
   }
 
   # Define tags for the instance and volumes
-  tags_all =  merge(var.default_tags, var.root_block_device_tags, var.ebs_block_device_tags, var.additional_tags)
-
+  tags_all = merge(var.default_tags, var.additional_tags)
 }
 
 ################################################################################
 # IAM Role / Instance Profile
 ################################################################################
 
-locals {
-  iam_role_name = try(coalesce(var.iam_role_name, var.name), "")  # IAM role name
-}
-# Define the IAM policy document for assuming the role
-data "aws_iam_policy_document" "assume_role_policy" {
-  count = var.create_iam_instance_profile ? 1 : 0  # Create policy document only if IAM instance profile is to be created
-
-  statement {
-    sid     = "EC2AssumeRole"  # Statement ID
-    actions = ["sts:AssumeRole"]  # Actions allowed
-
-    principals {
-      type        = "Service"  # Principal type
-      identifiers = ["ec2.${data.aws_partition.current.dns_suffix}"]  # Service principal (EC2)
-    }
-  }
+# Check if the IAM role exists
+data "aws_iam_role" "existing_role" {
+  count = var.create_iam_role ? 0 : 1
+  name  = var.iam_role_name
 }
 
-# Define the IAM role resource
-resource "aws_iam_role" "this" {
-  count = var.create_iam_instance_profile ? 1 : 0  # Create IAM role only if IAM instance profile is to be created
+# Create the IAM role if it doesn't exist
+resource "aws_iam_role" "iam_role" {
+  count = var.create_iam_role ? 1 : 0
+  name  = var.iam_role_name
 
-  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name  # IAM role name
-  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null  # IAM role name prefix
-  path        = var.iam_role_path  # IAM role path
-  description = var.iam_role_description  # IAM role description
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
 
-  assume_role_policy    = data.aws_iam_policy_document.assume_role_policy[0].json  # Assume role policy
-  permissions_boundary  = var.iam_role_permissions_boundary  # Permissions boundary
-  force_detach_policies = true  # Force detach policies
-
-  tags = merge(var.tags, var.iam_role_tags)  # Tags for the IAM role
+  tags = merge(var.tags, var.iam_role_tags)
 }
 
 # Attach policies to the IAM role
-resource "aws_iam_role_policy_attachment" "this" {
-  for_each = { for k, v in var.iam_role_policies : k => v if var.create_iam_instance_profile }  # Iterate over IAM role policies
-  policy_arn = each.value  # Policy ARN
-  role       = aws_iam_role.this[0].name  # IAM role name
-}
+resource "aws_iam_role_policy_attachment" "iam_policy_attachment" {
+  for_each = var.iam_role_policies
 
-# Define the IAM instance profile resource
-resource "aws_iam_instance_profile" "this" {
-  count = var.create_iam_instance_profile ? 1 : 0  # Create IAM instance profile only if specified
-  role = aws_iam_role.this[0].name  # IAM role name
-  name        = var.iam_role_use_name_prefix ? null : local.iam_role_name  # Instance profile name
-  name_prefix = var.iam_role_use_name_prefix ? "${local.iam_role_name}-" : null  # Instance profile name prefix
-  path        = var.iam_role_path  # Instance profile path
-  tags = merge(var.tags, var.iam_role_tags)  # Tags for the instance profile
+  role = var.create_iam_role ? aws_iam_role.iam_role[0].name : (
+    length(data.aws_iam_role.existing_role) > 0 ? data.aws_iam_role.existing_role[0].name : null
+  )
+
+  policy_arn = each.value
 
   lifecycle {
-    create_before_destroy = true  # Ensure new instance profile is created before destroying the old one
-
-
+    ignore_changes = [role]
   }
 }
 
+# Create the IAM instance profile
+resource "aws_iam_instance_profile" "iam_instance_profile" {
+  count = var.create_iam_role ? 1 : 0
+  name  = var.iam_instance_profile_name
+  role  = aws_iam_role.iam_role[0].name
 
-/*
-# CloudWatch Log Group for EC2 instance logs
-resource "aws_cloudwatch_log_group" "ec2_logs" {
-  name              = "/aws/ec2/instance-logs"
-  retention_in_days = var.log_retention_days
-  tags              = var.tags
+  tags = merge(var.tags, var.iam_role_tags)
 }
-
-# CloudWatch Log Stream for EC2 instance logs
-resource "aws_cloudwatch_log_stream" "ec2_stream" {
-  name           = "instance-log-stream"
-  log_group_name = aws_cloudwatch_log_group.ec2_logs.name
-}
-
-# SSM Document for enabling logging on EC2 instances
-resource "aws_ssm_document" "enable_logging" {
-  name          = "EnableInstanceLogging"
-  document_type = "Command"
-  content       = var.ssm_logging_document_content
-  tags          = var.tags
-}
-
-
-# GuardDuty for Threat Protection
-resource "aws_guardduty_detector" "main" {
-  count = var.enable_guardduty ? 1 : 0
-  enable = true
-}
-resource "aws_securityhub_standards_subscription" "best_practices" {
-  count        = var.enable_securityhub ? 1 : 0
-  standards_arn = "arn:aws:securityhub:::standards/aws-foundational-security-best-practices/v/1.0.0"
-}
-*/
