@@ -123,7 +123,7 @@ module "security_group" {
 
   security_group_name        = "awlapptubormapp01-sg" # Security group name
   security_group_description = "Example security group" # Security group description
-  vpc_id                     = "vpc-0abb2731619cb0e34" # VPC ID
+  vpc_id                     = "vpc" # VPC ID
 
   ingress_rules = [
     {
