@@ -1,39 +1,3 @@
-/*
-# Variable: name
-# Specifies the name to be used for the EC2 instance.
-# Default: "default-ec2-instance"
-# Example: "my-ec2-instance"
-# Constraints:
-# - Must not exceed 256 characters.
-
-variable "name" {
-  description = "Name to be used for the EC2 instance. This will be added as a 'Name' tag for identification."
-  type        = string
-  default     = "awlapturbonapp01"
-  validation {
-    condition     = length(var.name) <= 256
-    error_message = "The 'name' must not exceed 256 characters."
-  }
-}
-*/
-
-
-# Variable: ami
-# Specifies the AMI ID to use for the instance.
-# Default: null
-# Example: "ami-0c55b159cbfafe1f0"
-# Constraints:
-# - Must either be null or a valid AMI ID starting with "ami-".
-
-variable "ami" {
-  description = "AMI ID to provision the rquired OS instance."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.ami == null || can(regex("^ami-[a-z0-9]+$", var.ami))
-    error_message = "The 'ami' must either be null or a valid AMI ID starting with 'ami-'."
-  }
-}
 
 
 # Variable: maintenance_options
@@ -46,8 +10,8 @@ variable "maintenance_options" {
 Defines the maintenance options for the instance.
 Specify settings such as auto-recovery or custom maintenance windows.
 EOT
-  type    = map(any)
-  default = { "auto_recovery" = "disabled" }
+  type        = map(any)
+  default     = { "auto_recovery" = "disabled" }
 }
 
 # Variable: availability_zone
@@ -78,8 +42,8 @@ variable "disable_api_termination" {
 If true, enables EC2 Instance Termination Protection. This prevents accidental termination of the instance.
 Defaults to 'false', ensuring easy management unless termination protection is explicitly required.
 EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 # Variable: ebs_block_device
@@ -96,17 +60,43 @@ EOT
 variable "ebs_block_device" {
   description = "Configuration for EBS block devices"
   type = list(object({
-    delete_on_termination = bool
-    device_name           = string
-    encrypted             = bool
-    iops                  = number
-    kms_key_id            = string
-    snapshot_id           = string
-    volume_size           = number
-    volume_type           = string
-    throughput            = number
-    tags                  = map(string)
+    delete_on_termination = optional(bool, true)    # Optional
+    device_name           = string  # Required
+    encrypted             = optional(bool, false)    # Optional
+    iops                  = optional(number, 0)  # Optional
+    kms_key_id            = optional(string, "")  # Optional
+    snapshot_id           = optional(string, "")  # Optional
+    volume_size           = number  # Required
+    volume_type           = optional(string, "gp2")  # Optional
+    throughput            = optional(number, 0)  # Optional
+    tags                  = optional(map(string), {})  # Optional
   }))
+  #default = []
+
+  validation {
+    condition     = alltrue([for device in var.ebs_block_device : device.device_name != ""])
+    error_message = "Each EBS block device must have a device name."
+  }
+
+  validation {
+    condition     = alltrue([for device in var.ebs_block_device : device.volume_size > 0])
+    error_message = "Each EBS block device must have a volume size greater than 0."
+  }
+
+  validation {
+    condition     = alltrue([for device in var.ebs_block_device : device.iops >= 0])
+    error_message = "IOPS must be a non-negative number."
+  }
+
+  validation {
+    condition     = alltrue([for device in var.ebs_block_device : device.throughput >= 0])
+    error_message = "Throughput must be a non-negative number."
+  }
+
+  validation {
+    condition     = alltrue([for device in var.ebs_block_device : device.volume_type != ""])
+    error_message = "Each EBS block device must have a volume type."
+  }
 }
 
 # Variable: ebs_optimized
@@ -119,8 +109,8 @@ variable "ebs_optimized" {
 If true, the launched EC2 instance will be EBS-optimized, providing dedicated throughput for EBS volumes.
 Defaults to 'true' to checkov complaince pass.
 EOT
-  type    = bool
-  default = true
+  type        = bool
+  default     = true
 
   validation {
     condition     = var.ebs_optimized == true || var.ebs_optimized == false
@@ -139,8 +129,8 @@ Whether Nitro Enclaves will be enabled on the instance.
 Nitro Enclaves provide an isolated environment for sensitive data processing.
 Defaults to 'false'.
 EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 
   validation {
     condition     = var.enclave_options_enabled == true || var.enclave_options_enabled == false
@@ -148,28 +138,7 @@ EOT
   }
 }
 
-# Variable: ephemeral_block_device
-# Specifies ephemeral block devices for the instance.
-# Default: []
-# Example: [
-#   {
-#     device_name  = "/dev/xvdc"
-#     virtual_name = "ephemeral0"
-#   }
-# ]
 
-variable "ephemeral_block_device" {
-  description = <<EOT
-Customize ephemeral (also known as instance store) volumes on the instance.
-These are temporary storage devices available for certain instance types.
-EOT
-  type    = list(object({
-    device_name  = string
-    virtual_name = string
-  }))
-  default = [ ]
-
-}
 
 # Variable: get_password_data
 # Determines whether to wait and retrieve password data.
@@ -182,8 +151,8 @@ If true, wait for password data to become available and retrieve it.
 This is typically used for Windows instances to retrieve the administrator password.
 Defaults to 'false'.
 EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 
@@ -198,8 +167,8 @@ variable "host_id" {
 ID of a dedicated host that the instance will be assigned to.
 This is used for launching an instance on a specific dedicated host.
 EOT
-  type    = string
-  default = null
+  type        = string
+  default     = null
 }
 
 # Variable: iam_instance_profile
@@ -207,13 +176,14 @@ EOT
 # Default: null
 # Example: "my-instance-profile"
 
+#tflint-ignore: all
 variable "iam_instance_profile" {
   description = <<EOT
 IAM Instance Profile to launch the instance with.
 This is specified as the name of the Instance Profile.
 EOT
-  type    = string
-  default = null
+  type        = string
+  default     = null
 }
 
 # Variable: instance_initiated_shutdown_behavior
@@ -229,72 +199,17 @@ Shutdown behavior for the instance.
 Defaults to 'stop' for EBS-backed instances and 'terminate' for instance-store instances.
 Cannot be set on instance-store instances.
 EOT
-  type    = string
-  default = "stop"
+  type        = string
+  default     = "stop"
   validation {
     condition     = contains(["stop", "terminate"], var.instance_initiated_shutdown_behavior)
     error_message = "The 'instance_initiated_shutdown_behavior' must be 'stop' or 'terminate'."
   }
 }
 
-# Variable: instance_type
-# Specifies the type of instance to start.
-# Default: "t3.micro"
-# Example: "m5.large"
-# Constraints:
-# - Must be a valid EC2 instance type.
 
-variable "instance_type" {
-  description = "The type of the EC2 instance to launch in AWS`."
-  type        = string
-  default     = "t2.micro"
 
-  validation {
-    condition     = contains(["t2.micro", "t2.small", "t2.medium", "m5.large", "m5.2xlarge", "c5.2xlarge"], var.instance_type)
-    error_message = "The instance type must be one of the following: t2.micro, t2.small, t2.medium, m5.large, m5.xlarge."
-  }
-}
 
-/*
-# Variable: instance_tags
-# Specifies additional tags for the instance.
-# Default: {}
-# Example: { "Environment" = "Production", "Team" = "DevOps" }
-
-variable "instance_tags" {
-  description = "Additional tags for the instance. These tags are merged with default tags."
-  type        = map(string)
-  default     = {
-    "Environment" = "development"
-    "Owner"       = "admin"
-  }
-
-  validation {
-    condition     = alltrue([for key, value in var.instance_tags : can(regex("^[a-zA-Z0-9-_]+$", key)) && can(regex("^[a-zA-Z0-9-_ ]+$", value))])
-    error_message = "Each tag key and value must only contain alphanumeric characters, hyphens, underscores, and spaces."
-  }
-}
-*/
-
-# Variable: key_name
-# Specifies the key name for the instance.
-# Default: null
-# Example: "my-key-pair"
-# Constraints:
-# - Must be null or a valid key pair name (alphanumeric, dashes, underscores).
-
-variable "key_name" {
-  description = <<EOT
-Key name of the Key Pair to use for the instance.
-The Key Pair can be managed using the `key_pair` resource.
-EOT
-  type    = string
-  default = null
-  validation {
-    condition     = var.key_name == null || can(regex("^[a-zA-Z0-9-_]+$", var.key_name))
-    error_message = "The 'key_name' must be null or a valid key pair name consisting of alphanumeric characters, dashes, or underscores."
-  }
-}
 
 # Variable: launch_template
 # Specifies the launch template for the instance.
@@ -306,42 +221,25 @@ variable "launch_template" {
 Specifies a Launch Template to configure the instance. 
 Parameters configured on this resource will override the corresponding parameters in the Launch Template.
 EOT
-type = map(any)
+  type = list(object({
+    id      = optional(string, null)   # Optional Launch Template ID
+    name    = optional(string, null)   # Optional Launch Template name
+    version = optional(string, null)   # Optional Launch Template version
+  }))
 }
 # Variable: metadata_options
 # Specifies the metadata options to be applied dynamically to the instances in the launch template.
-# Default:
-# {
-#   "http_endpoint": "enabled",
-#   "http_tokens": "required",
-#   "http_put_response_hop_limit": 1,
-#   "http_protocol_ipv6": "disabled",
-#   "instance_metadata_tags": "disabled"
-# }
-# Example:
-# {
-#   "http_endpoint": "enabled",
-#   "http_tokens": "required",
-#   "http_put_response_hop_limit": 1,
-#   "http_protocol_ipv6": "disabled",
-#   "instance_metadata_tags": "enabled"
-# }
-# Constraints:
-# - `http_endpoint` must be "enabled" or "disabled".
-# - `http_tokens` must be either "required" or "optional".
-# - `http_put_response_hop_limit` must be an integer between 1 and 64.
-# - `http_protocol_ipv6` must be "enabled" or "disabled".
-# - `instance_metadata_tags` must be "enabled" or "disabled".
+
 
 variable "metadata_options" {
   description = "Specifies the metadata options EC2 instance with IMDSv2."
-  type = map(string)
+  type        = map(string)
   default = {
-    http_endpoint               = "enabled"    # Enables metadata service
-    http_tokens                 = "required"   # Enforces IMDSv2
-    http_put_response_hop_limit = "1"          # Restricts metadata response hops to 1
-    http_protocol_ipv6          = "disabled"   # Disables IPv6 metadata requests
-    instance_metadata_tags      = "disabled"   # Disables metadata tags
+    http_endpoint               = "enabled"  # Enables metadata service
+    http_tokens                 = "required" # Enforces IMDSv2
+    http_put_response_hop_limit = "1"        # Restricts metadata response hops to 1
+    http_protocol_ipv6          = "disabled" # Disables IPv6 metadata requests
+    instance_metadata_tags      = "disabled" # Disables metadata tags
   }
   validation {
     condition = alltrue([
@@ -385,6 +283,7 @@ variable "monitoring" {
 
 variable "network_interface" {
   description = "network_interface variable allows you to configure network interfaces for your AWS EC2 instances. This variable is defined as a map of objects, where each object represents a network interface configuration"
+  default     = {}
   type = map(object({
     device_index          = number
     network_interface_id  = optional(string)
@@ -401,9 +300,9 @@ variable "network_interface" {
 
 variable "private_dns_name_options" {
   description = "Customize the private DNS name options of the instance."
-  type        = object({
-    hostname_type                      = string
-    enable_resource_name_dns_a_record  = bool
+  type = object({
+    hostname_type                     = string
+    enable_resource_name_dns_a_record = bool
   })
   default = {
     hostname_type                     = "ip-name"
@@ -457,13 +356,13 @@ EOT
     {
       volume_size = 50
       volume_type = "gp3"
-      iops = 3000
+      iops        = 3000
     }
   ]
 
   validation {
     condition = alltrue([
-      for device in var.root_block_device : 
+      for device in var.root_block_device :
       device.volume_size > 0 &&
       contains(["gp2", "gp3", "io1", "io2", "sc1", "st1", "standard"], device.volume_type) &&
       (device.encrypted == null || device.encrypted == true || device.encrypted == false)
@@ -482,8 +381,8 @@ variable "secondary_private_ips" {
 A list of secondary private IPv4 addresses to assign to the instance's primary network interface (eth0) in a VPC. 
 This can only be assigned at instance creation.
 EOT
-  type    = list(string)
-  default = []
+  type        = list(string)
+  default     = []
 
   validation {
     condition = alltrue([
@@ -503,8 +402,8 @@ variable "source_dest_check" {
 Controls if traffic is routed to the instance when the destination address does not match the instance. 
 This is useful for instances acting as NATs or VPNs.
 EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 
   validation {
     condition     = var.source_dest_check == true || var.source_dest_check == false
@@ -541,15 +440,15 @@ variable "subnet_id" {
 variable "tags" {
   description = "A mapping of tags to assign to the resource."
   type        = map(string)
-  default     = {
+  default = {
     "Environment" = "Production"
     "Application" = "WebApp"
   }
 
   validation {
     condition = alltrue([
-      for key, value in var.tags : 
-      can(regex("^[a-zA-Z0-9-_]+$", key)) && 
+      for key, value in var.tags :
+      can(regex("^[a-zA-Z0-9-_]+$", key)) &&
       can(regex("^[a-zA-Z0-9-_ ]+$", value))
     ])
     error_message = "Each tag key must only contain alphanumeric characters, hyphens, and underscores. Each tag value must only contain alphanumeric characters, hyphens, underscores, and spaces."
@@ -586,8 +485,8 @@ variable "user_data" {
 The user data to provide when launching the instance. 
 Do not pass gzip-compressed data via this argument; use `user_data_base64` instead.
 EOT
-  type    = string
-  default = null
+  type        = string
+  default     = null
 }
 
 # Variable: user_data_base64
@@ -600,8 +499,8 @@ variable "user_data_base64" {
 Base64-encoded binary user data to provide when launching the instance. 
 Use this for data that is not a valid UTF-8 string, such as gzip-encoded data.
 EOT
-  type    = string
-  default = null
+  type        = string
+  default     = null
 }
 
 # Variable: user_data_replace_on_change
@@ -614,29 +513,12 @@ variable "user_data_replace_on_change" {
 If true, changes to `user_data` or `user_data_base64` will trigger a destroy and recreate of the instance. 
 Defaults to false if not set.
 EOT
-  type    = bool
-  default = false
+  type        = bool
+  default     = false
 }
 
 
 
-# Variable: vpc_security_group_ids
-# Specifies the security group IDs to associate with the instance.
-# Default: []
-# Example: ["sg-12345678", "sg-87654321"]
-
-variable "vpc_security_group_ids" {
-  description = "A list of security group IDs to associate with the instance."
-  type        = list(string)
-  default     = []
-
-  validation {
-    condition = alltrue([
-      for sg_id in var.vpc_security_group_ids : can(regex("^sg-[a-z0-9]+$", sg_id))
-    ])
-    error_message = "Each security group ID must be a valid security group ID (e.g., sg-12345678)."
-  }
-}
 
 # Variable: timeouts
 # Configures timeouts for creating, updating, and deleting EC2 instance resources.
@@ -658,41 +540,26 @@ variable "timeouts" {
 }
 
 
-variable "iam_role_name" {
-  description = "The name of the IAM role to attach to the instances"
-  type        = string
-}
-
-variable "create_iam_role" {
-  description = "Whether to create the IAM role if it doesn't exist"
-  type        = bool
-  default     = false
-}
 
 variable "iam_instance_profile_name" {
   description = "The name of the IAM instance profile to attach to the instances"
   type        = string
+  default     = null
 }
 
-variable "iam_role_policies" {
-  description = "Policies to attach to the IAM role"
-  type        = map(string)
-}
-
-
-variable "iam_role_tags" {
-  description = "Tags to apply to the IAM role"
-  type        = map(string)
-  default     = {}
-}
 
 
 ##*************************************************************************##
 # Primary AWS region for the provider
+#tflint-ignore: all
 variable "region" {
   description = "The AWS region to be used by the primary provider. Example: us-east-1, us-west-2."
   type        = string
   default     = "ca-central-1"
+  validation {
+    condition     = contains(["ca-central-1", "us-east-1", "us-west-1", "us-east-2", "us-west-2"], var.region)
+    error_message = "The name of the region must be from the variable region."
+  }
 }
 
 
@@ -706,7 +573,7 @@ Examples:
 - Team: DevOps, Security
 - Project: your-project-name
 EOT
-  type = map(string)
+  type        = map(string)
   default = {
     Environment = "dev"
     Team        = "DevOps"
@@ -716,98 +583,6 @@ EOT
 
 
 
-#######################################################################################################################
-#####Security Group Variables#############################################################
-
-// VPC ID where the security group will be created
-variable "vpc_id" {
-  description = "The VPC ID where the security group will be created"
-  type        = string
-
-  // Validation to ensure the VPC ID is in the correct format
-  validation {
-    condition     = can(regex("^vpc-[0-9a-f]{8,17}$", var.vpc_id))
-    error_message = "The VPC ID must be in the format 'vpc-xxxxxxxx' or 'vpc-xxxxxxxxxxxxxxxxx'."
-  }
-}
-
-// Name of the security group
-variable "security_group_name" {
-  description = "The name of the security group"
-  type        = string
-
-  // Validation to ensure the security group name is not empty
-  validation {
-    condition     = length(var.security_group_name) > 0
-    error_message = "The security group name must not be empty."
-  }
-}
-
-// Description of the security group
-variable "security_group_description" {
-  description = "The description of the security group"
-  type        = string
-
-  // Validation to ensure the security group description is not empty
-  validation {
-    condition     = length(var.security_group_description) > 0
-    error_message = "The security group description must not be empty."
-  }
-}
-
-// List of ingress rules for the security group
-variable "ingress_rules" {
-  description = "List of ingress rules"
-  type = list(object({
-    from_port   = number
-    to_port     = number
-    protocol    = string
-    cidr_blocks = list(string)
-    description = string
-  }))
-
-  // Validation to ensure at least one ingress rule is provided
-  validation {
-    condition     = length(var.ingress_rules) > 0
-    error_message = "At least one ingress rule must be specified."
-  }
-}
-
-// List of egress rules for the security group
-variable "egress_rules" {
-  description = "List of egress rules"
-  type = list(object({
-    from_port   = number
-    to_port     = number
-    protocol    = string
-    cidr_blocks = list(string)
-    description = string
-  }))
-
-  // Validation to ensure at least one egress rule is provided
-  validation {
-    condition     = length(var.egress_rules) > 0
-    error_message = "At least one egress rule must be specified."
-  }
-}
-
-# Security group tags to apply to all resources managed by the providers
-variable "security_group_tags" {
-  description = <<EOT
-A map of Security group tags to be applied to all Security groups which has been created. 
-Tags are key-value pairs that help with resource identification, cost management, and access control.
-Examples:
-- Environment: dev, test, prod
-- Team: DevOps, Security
-- Project: your-project-name
-EOT
-  type = map(string)
-  default = {
-    Name = "Windows Firewall"
-    purpose        = "Restrict access"
-    Application     = "Citrix-Test"
-  }
-}
 
 ###########################################################################################################################################
 ##Naming Convention Standards################################################
@@ -837,20 +612,25 @@ variable "additional_tags" {
   // No specific validation needed as the default is an empty map
 }
 
-
-
-
 variable "instances" {
-  description = "List of instances to create"
+  description = "Map of instances to create"
   type = list(object({
-    ami              = string
-    instance_type    = string
-    key_name         = string
-    additional_tags  = optional(map(string))
+    ami             = optional(string, null) # Optional AMI with default value null
+    instance_type   = optional(string, null) # Optional instance type with default value null
+    key_name        = optional(string, null) # Optional key name with default value null
+    additional_tags = optional(map(string), {}) # Optional additional tags with default value empty map
   }))
 
-}
+  validation {
+    condition     = length(var.launch_template) == 0 || alltrue([for instance in var.instances : instance.ami != null])
+    error_message = "Each instance must have an AMI specified if no launch template is provided."
+  }
 
+  validation {
+    condition     = length(var.launch_template) == 0 || alltrue([for instance in var.instances : instance.instance_type != null])
+    error_message = "Each instance must have an instance type specified if no launch template is provided."
+  }
+}
 
 
 
@@ -863,180 +643,35 @@ variable "os_family" {
     error_message = "The os_family variable must be either 'linux' or 'windows'."
   }
 }
-
-/*
-
-################################################################################
-# Log Retention
-################################################################################
-
-variable "log_retention_days" {
-  description = "Number of days to retain CloudWatch logs for security purposes."
+variable "cost_center" {
+  description = "The cost center associated with the resources. Must be a 4-digit number."
   type        = number
-  default     = 90
+  default     = 1234
   validation {
-    condition     = var.log_retention_days > 0
-    error_message = "Log retention days must be a positive number."
+    condition     = var.cost_center == null || can(regex("^\\d{4}$", var.cost_center))
+    error_message = "The cost_center must be a 4-digit number. Additional info: https://manulife-ets.atlassian.net/wiki/spaces/CPA/pages/13643055273/Cost+Center"
   }
 }
 
-################################################################################
-# Log Bucket Name
-################################################################################
-
-variable "log_bucket_name" {
-  description = "Name of the S3 bucket for storing CloudTrail logs."
+variable "environment" {
+  description = "The environment that the primary resources are provisioned for."
   type        = string
+  default     = "prod"
   validation {
-    condition     = can(regex("^[a-zA-Z0-9.-]{3,63}$", var.log_bucket_name))
-    error_message = "Bucket name must be 3-63 characters long and can only contain letters, numbers, hyphens, and dots."
+    condition     = var.environment == null || can(regex("^(?i)(dev|test|uat|sandbox|nonprod|prod|dr)$", var.environment))
+    error_message = "The environment must be one of; dev, test, uat, sandbox, nonprod, prod, dr (case insensitive)."
   }
 }
 
-################################################################################
-# Security Log Retention
-################################################################################
 
-variable "security_log_retention_days" {
-  description = "Number of days to retain security logs in CloudWatch."
-  type        = number
-  default     = 180
-  validation {
-    condition     = var.security_log_retention_days > 0
-    error_message = "Security log retention days must be a positive number."
-  }
-}
-
-################################################################################
-# Manulife-Approved AMIs
-################################################################################
-
-variable "manulife_approved_ami_names" {
-  description = "List of AMI names approved by Manulife for resource provisioning."
+variable "vpc_security_group_ids" {
+  description = "List of VPC security group IDs"
   type        = list(string)
   default     = []
+
   validation {
-    condition     = length(var.manulife_approved_ami_names) > 0
-    error_message = "At least one approved AMI name must be specified."
+    condition     = length(var.vpc_security_group_ids) > 0
+    error_message = "At least one security group ID must be provided."
   }
 }
-
-################################################################################
-# Security Group Variables
-################################################################################
-
-variable "security_group_id" {
-  description = "The ID of the security group for configuring rules."
-  type        = string
-  validation {
-    condition     = can(regex("^sg-[0-9a-f]{8,17}$", var.security_group_id))
-    error_message = "Security group ID must be in the format 'sg-xxxxxxxx' or 'sg-xxxxxxxxxxxxxxxxx'."
-  }
-}
-
-variable "security_rule_description" {
-  description = "Description for the security group rule."
-  type        = string
-  default     = "Managed by Terraform"
-  validation {
-    condition     = length(var.security_rule_description) <= 255
-    error_message = "Security group rule description must not exceed 255 characters."
-  }
-}
-
-################################################################################
-# Compliance Check Variables
-################################################################################
-
-variable "compliance_check_instance_ids" {
-  description = "List of instance IDs for running compliance checks."
-  type        = list(string)
-  default     = []
-  validation {
-    condition     = length(var.compliance_check_instance_ids) > 0
-    error_message = "At least one instance ID must be specified for compliance checks."
-  }
-}
-
-################################################################################
-# Threat Protection and Data Leakage Variables
-################################################################################
-
-variable "threat_agent_install_command" {
-  description = "Command to install and configure the threat protection agent."
-  type        = string
-  default     = "sudo apt-get update && sudo apt-get install -y manulife-threat-agent"
-}
-
-variable "data_leakage_prevention_command" {
-  description = "Command to install and enable the data leakage prevention agent."
-  type        = string
-  default     = "sudo apt-get update && sudo apt-get install -y manulife-dlp-agent"
-}
-
-################################################################################
-# NTP Servers
-################################################################################
-
-variable "ntp_servers" {
-  description = "List of NTP servers for time synchronization."
-  type        = list(string)
-  default     = ["ntp1.manulife.com", "ntp2.manulife.com"]
-}
-
-################################################################################
-# Vulnerability Scanning Variables
-################################################################################
-
-variable "vulnerability_scanning_command" {
-  description = "Command to install and schedule vulnerability scanning."
-  type        = string
-  default     = "sudo apt-get update && sudo apt-get install -y manulife-vulnerability-agent"
-}
-
-################################################################################
-# Approved Resource Owner IDs
-################################################################################
-
-variable "approved_resource_owners" {
-  description = "List of approved AWS account IDs for resource provisioning."
-  type        = list(string)
-  default     = ["123456789012"]
-  validation {
-    condition     = alltrue([for id in var.approved_resource_owners : can(regex("^[0-9]{12}$", id))])
-    error_message = "All approved resource owner IDs must be 12-digit numbers."
-  }
-}
-################################################################################
-# Centralized Security Logs Bucket Name
-################################################################################
-
-variable "security_logs_bucket_name" {
-  description = "Name of the S3 bucket for centralized security logs."
-  type        = string
-  default     = "manulife-security-logs"
-  validation {
-    condition     = can(regex("^[a-zA-Z0-9.-]{3,63}$", var.security_logs_bucket_name))
-    error_message = "Bucket name must be 3-63 characters long and can only contain letters, numbers, hyphens, and dots."
-  }
-}
-
-################################################################################
-# Default Tags
-################################################################################
-
-
-
-################################################################################
-# Additional Variables
-################################################################################
-
-*/
-
-
-
-
-
-
-
 
